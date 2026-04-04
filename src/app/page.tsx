@@ -81,7 +81,7 @@ export default function FeedPage() {
       {/* Brand headline */}
       <BrandHeadline
         before="What's happening on"
-        highlight="Launch"
+        highlight="Limiance"
         as="h1"
         size={28}
         style={{ marginBottom: 'var(--space-5)' }}

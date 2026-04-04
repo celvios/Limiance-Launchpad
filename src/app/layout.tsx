@@ -4,8 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
   title: {
-    default: "Limiance Launch — Feed",
-    template: "Limiance Launch — %s",
+    default: "Limiance — Feed",
+    template: "Limiance — %s",
   },
   description: "Launch, trade, and discover tokens on Solana. The most trusted launchpad with bonding curves and automatic Raydium graduation.",
   keywords: ["solana", "token", "launchpad", "bonding curve", "raydium", "defi", "limiance", "launch"],
