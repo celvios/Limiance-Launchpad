@@ -83,48 +83,10 @@ export function Footer() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 0,
                 marginBottom: 'var(--space-4)',
               }}
             >
               <LimianceLogo size={24} />
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0,
-                  marginLeft: 8,
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '16px',
-                    fontWeight: 700,
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  Limiance
-                </span>
-                <span
-                  style={{
-                    width: 1,
-                    height: 14,
-                    background: 'var(--border)',
-                    margin: '0 8px',
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '16px',
-                    fontWeight: 700,
-                    color: 'var(--brand)',
-                  }}
-                >
-                  Launch
-                </span>
-              </span>
             </div>
             <p
               style={{

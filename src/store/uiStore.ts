@@ -13,6 +13,7 @@ interface UIStore {
   activeModal: string | null;
   toasts: Toast[];
   isSidebarCollapsed: boolean;
+  isMobileMenuOpen: boolean;
   openWalletDrawer: () => void;
   closeWalletDrawer: () => void;
   setOnboardingOpen: (open: boolean) => void;
@@ -21,6 +22,7 @@ interface UIStore {
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   toggleSidebar: () => void;
+  setMobileMenuOpen: (open: boolean) => void;
 }
 
 let toastCounter = 0;
@@ -31,6 +33,7 @@ export const useUIStore = create<UIStore>((set) => ({
   activeModal: null,
   toasts: [],
   isSidebarCollapsed: false,
+  isMobileMenuOpen: false,
 
   openWalletDrawer: () => set({ isWalletDrawerOpen: true }),
   closeWalletDrawer: () => set({ isWalletDrawerOpen: false }),
@@ -60,4 +63,6 @@ export const useUIStore = create<UIStore>((set) => ({
 
   toggleSidebar: () =>
     set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
+
+  setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
 }));

@@ -168,9 +168,13 @@ body {
 
 /* ── Responsive Layout ── */
 
-/* Desktop: show sidebar + ticker */
+/* Desktop: show sidebar + ticker + desktop topbar, hide mobile */
 .sidebar-wrapper { display: flex; }
 .ticker-wrapper { display: flex; }
+.desktop-topbar { display: flex; }
+.mobile-topbar { display: none !important; }
+.bottom-nav { display: none !important; }
+.menu-drawer { display: none !important; }
 .mobile-nav { display: none !important; }
 
 /* Tablet: hide ticker, sidebar icon-only */
@@ -185,12 +189,16 @@ body {
   .sidebar-desktop .logo-lockup-text { display: none; }
 }
 
-/* Mobile: hide sidebar, show bottom nav */
+/* Mobile: hide sidebar + desktop topbar, show mobile nav */
 @media (max-width: 1023px) {
-  .sidebar-wrapper { display: none; }
+  .sidebar-wrapper { display: none !important; }
+  .desktop-topbar { display: none !important; }
+  .mobile-topbar { display: flex !important; }
+  .bottom-nav { display: flex !important; }
+  .menu-drawer { display: block !important; }
   .mobile-nav { display: flex !important; }
   #main-content {
-    padding-bottom: 72px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
   .marquee-wrapper { display: none; }
 }

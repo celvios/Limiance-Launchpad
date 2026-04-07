@@ -12,6 +12,9 @@ import { WalletDrawer } from '@/components/wallet/WalletDrawer';
 import { ToastContainer } from '@/components/ui/Toast';
 import { GlobalWSProvider } from '@/components/layout/GlobalWSProvider';
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
+import { MobileTopBar } from '@/components/mobile-nav/MobileTopBar';
+import { BottomNav } from '@/components/mobile-nav/BottomNav';
+import { MenuDrawer } from '@/components/mobile-nav/MenuDrawer';
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,7 +32,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           overflow: 'hidden',
         }}
       >
-        {/* Left Sidebar — hidden on mobile via CSS */}
+        {/* Left Sidebar — hidden on mobile via .sidebar-wrapper CSS */}
         <div className="sidebar-wrapper">
           <Sidebar />
         </div>
@@ -44,7 +47,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             height: '100vh',
           }}
         >
-          <TopBar />
+          <div className="desktop-topbar">
+            <TopBar />
+          </div>
+          <div className="mobile-topbar">
+            <MobileTopBar />
+          </div>
           {showMarquee && <MarqueeTicker />}
           <main
             id="main-content"
@@ -67,6 +75,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Overlays */}
       <WalletDrawer />
       <ToastContainer />
+      <BottomNav />
+      <MenuDrawer />
     </>
   );
 }

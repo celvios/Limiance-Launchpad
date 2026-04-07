@@ -67,37 +67,18 @@ export function Sidebar() {
         }}
         className="sidebar-desktop"
       >
-        {/* Logo Lockup: [Logo] Limiance | Launch */}
+        {/* Logo Lockup */}
         <Link
           href="/"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 0,
             textDecoration: 'none',
             padding: 'var(--space-2) var(--space-2)',
             marginBottom: 'var(--space-5)',
           }}
         >
-          <LimianceLogo size={28} showText={false} />
-          <span className="logo-lockup-text" style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0,
-            marginLeft: 8,
-          }}>
-            <span
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '20px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                letterSpacing: '0.5px',
-              }}
-            >
-              Limiance
-            </span>
-          </span>
+          <LimianceLogo size={28} />
         </Link>
 
         {/* Navigation */}
@@ -226,76 +207,6 @@ export function Sidebar() {
           )}
         </div>
       </aside>
-
-      {/* Mobile Bottom Nav */}
-      <nav
-        id="mobile-nav"
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '64px',
-          background: 'var(--bg-card)',
-          borderTop: '1px solid var(--border)',
-          display: 'none',
-          alignItems: 'center',
-          justifyContent: 'space-around',
-          zIndex: 40,
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
-        className="mobile-nav"
-      >
-        {navItems.map((item) => {
-          const isActive = item.href === '/'
-            ? pathname === '/'
-            : pathname.startsWith(item.href);
-
-          if (item.isCreate) {
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  background: 'var(--brand)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  textDecoration: 'none',
-                  marginTop: '-16px',
-                  boxShadow: '0 4px 16px var(--brand-dim)',
-                }}
-              >
-                {item.icon}
-              </Link>
-            );
-          }
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '2px',
-                color: isActive ? 'var(--brand)' : 'var(--text-muted)',
-                textDecoration: 'none',
-                fontSize: '11px',
-                fontFamily: 'var(--font-ui)',
-              }}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
     </>
   );
 }
