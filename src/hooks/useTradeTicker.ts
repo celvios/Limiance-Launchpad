@@ -4,7 +4,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useTickerStore, type TradeEvent, type GraduationEvent } from '@/store/tickerStore';
 import { useUIStore } from '@/store/uiStore';
 
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
+// Default to mock data unless explicitly set to 'false'
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8080';
 
 // ── Mock trade data for simulated WS ──
