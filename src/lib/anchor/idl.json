@@ -1,0 +1,259 @@
+{
+  "version": "0.1.0",
+  "name": "launchpad",
+  "instructions": [
+    {
+      "name": "initializePlatform",
+      "accounts": [
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "platformConfig", "isMut": true, "isSigner": false },
+        { "name": "feeVault", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "feeBasisPoints", "type": "u16" }
+      ]
+    },
+    {
+      "name": "initializeToken",
+      "accounts": [
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "tokenConfig", "isMut": true, "isSigner": false },
+        { "name": "solVault", "isMut": true, "isSigner": false },
+        { "name": "creatorAta", "isMut": true, "isSigner": false },
+        { "name": "metadataAccount", "isMut": true, "isSigner": false },
+        { "name": "platformConfig", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "associatedTokenProgram", "isMut": false, "isSigner": false },
+        { "name": "tokenMetadataProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": "InitializeTokenParams"
+          }
+        }
+      ]
+    },
+    {
+      "name": "buy",
+      "accounts": [
+        { "name": "buyer", "isMut": true, "isSigner": true },
+        { "name": "tokenConfig", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "solVault", "isMut": true, "isSigner": false },
+        { "name": "buyerAta", "isMut": true, "isSigner": false },
+        { "name": "platformConfig", "isMut": false, "isSigner": false },
+        { "name": "feeVault", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "associatedTokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "maxSolCost", "type": "u64" }
+      ]
+    },
+    {
+      "name": "sell",
+      "accounts": [
+        { "name": "seller", "isMut": true, "isSigner": true },
+        { "name": "tokenConfig", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "solVault", "isMut": true, "isSigner": false },
+        { "name": "sellerAta", "isMut": true, "isSigner": false },
+        { "name": "platformConfig", "isMut": false, "isSigner": false },
+        { "name": "feeVault", "isMut": true, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "minSolReturn", "type": "u64" }
+      ]
+    },
+    {
+      "name": "graduate",
+      "accounts": [
+        { "name": "caller", "isMut": true, "isSigner": true },
+        { "name": "tokenConfig", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "solVault", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancelToken",
+      "accounts": [
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "tokenConfig", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "solVault", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdrawFees",
+      "accounts": [
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "platformConfig", "isMut": false, "isSigner": false },
+        { "name": "feeVault", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "PlatformConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "feeBasisPoints", "type": "u16" },
+          { "name": "feeVault", "type": "publicKey" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "TokenConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "creator", "type": "publicKey" },
+          { "name": "mint", "type": "publicKey" },
+          { "name": "name", "type": "string" },
+          { "name": "symbol", "type": "string" },
+          { "name": "uri", "type": "string" },
+          { "name": "supplyCap", "type": "u64" },
+          { "name": "currentSupply", "type": "u64" },
+          { "name": "curveType", "type": { "defined": "CurveType" } },
+          { "name": "curveParams", "type": { "defined": "CurveParams" } },
+          { "name": "graduationThreshold", "type": "u64" },
+          { "name": "solVault", "type": "publicKey" },
+          { "name": "status", "type": { "defined": "TokenStatus" } },
+          { "name": "creatorAllocation", "type": "u8" },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "graduating", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "InitializeTokenParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "name", "type": "string" },
+          { "name": "symbol", "type": "string" },
+          { "name": "uri", "type": "string" },
+          { "name": "supplyCap", "type": "u64" },
+          { "name": "curveType", "type": { "defined": "CurveType" } },
+          { "name": "curveParams", "type": { "defined": "CurveParams" } },
+          { "name": "graduationThreshold", "type": "u64" },
+          { "name": "creatorAllocation", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "CurveParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "paramA", "type": "u64" },
+          { "name": "paramB", "type": "u64" },
+          { "name": "paramC", "type": "u64" },
+          { "name": "paramD", "type": "u64" },
+          { "name": "paramE", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "CurveType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Linear" },
+          { "name": "Exponential" },
+          { "name": "Sigmoid" }
+        ]
+      }
+    },
+    {
+      "name": "TokenStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Active" },
+          { "name": "Graduated" },
+          { "name": "Cancelled" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "TokenCreated",
+      "fields": [
+        { "name": "mint", "type": "publicKey", "index": false },
+        { "name": "creator", "type": "publicKey", "index": false },
+        { "name": "symbol", "type": "string", "index": false },
+        { "name": "curveType", "type": "u8", "index": false },
+        { "name": "supplyCap", "type": "u64", "index": false },
+        { "name": "graduationThreshold", "type": "u64", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "TradeExecuted",
+      "fields": [
+        { "name": "mint", "type": "publicKey", "index": false },
+        { "name": "trader", "type": "publicKey", "index": false },
+        { "name": "isBuy", "type": "bool", "index": false },
+        { "name": "tokenAmount", "type": "u64", "index": false },
+        { "name": "solAmount", "type": "u64", "index": false },
+        { "name": "newSupply", "type": "u64", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "TokenGraduated",
+      "fields": [
+        { "name": "mint", "type": "publicKey", "index": false },
+        { "name": "totalRaised", "type": "u64", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "TokenNotActive", "msg": "Token is not active" },
+    { "code": 6001, "name": "SupplyCap", "msg": "Supply cap exceeded" },
+    { "code": 6002, "name": "InsufficientFunds", "msg": "Insufficient SOL balance" },
+    { "code": 6003, "name": "InsufficientTokens", "msg": "Insufficient token balance" },
+    { "code": 6004, "name": "AlreadyGraduating", "msg": "Token is already graduating" },
+    { "code": 6005, "name": "SlippageExceeded", "msg": "Slippage tolerance exceeded" },
+    { "code": 6006, "name": "ZeroAmount", "msg": "Amount must be greater than zero" },
+    { "code": 6007, "name": "InvalidCurveParams", "msg": "Invalid curve parameters" },
+    { "code": 6008, "name": "CreatorAllocationTooHigh", "msg": "Creator allocation exceeds maximum (10%)" },
+    { "code": 6009, "name": "SymbolTooLong", "msg": "Symbol too long (max 10 chars)" },
+    { "code": 6010, "name": "NameTooLong", "msg": "Name too long (max 32 chars)" },
+    { "code": 6011, "name": "InvalidThreshold", "msg": "Graduation threshold must be less than supply cap" },
+    { "code": 6012, "name": "Overflow", "msg": "Arithmetic overflow" },
+    { "code": 6013, "name": "Unauthorized", "msg": "Unauthorized" },
+    { "code": 6014, "name": "UriTooLong", "msg": "URI too long (max 200 chars)" },
+    { "code": 6015, "name": "SupplyCapTooSmall", "msg": "Supply cap too small (min 1000)" },
+    { "code": 6016, "name": "FeeTooHigh", "msg": "Fee too high (max 500 bps)" }
+  ],
+  "metadata": {
+    "address": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+  }
+}
