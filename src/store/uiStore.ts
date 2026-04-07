@@ -2,27 +2,31 @@ import { create } from 'zustand';
 
 export interface Toast {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'whale';
   message: string;
   duration?: number;
+  href?: string;
 }
 
 interface UIStore {
   isWalletDrawerOpen: boolean;
   isOnboardingOpen: boolean;
   activeModal: string | null;
+  modalData?: any;
   toasts: Toast[];
   isSidebarCollapsed: boolean;
   isMobileMenuOpen: boolean;
+  isLiveActivitySheetOpen: boolean;
   openWalletDrawer: () => void;
   closeWalletDrawer: () => void;
   setOnboardingOpen: (open: boolean) => void;
-  openModal: (id: string) => void;
+  openModal: (id: string, data?: any) => void;
   closeModal: () => void;
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   toggleSidebar: () => void;
   setMobileMenuOpen: (open: boolean) => void;
+  setLiveActivitySheetOpen: (open: boolean) => void;
 }
 
 let toastCounter = 0;
@@ -31,17 +35,19 @@ export const useUIStore = create<UIStore>((set) => ({
   isWalletDrawerOpen: false,
   isOnboardingOpen: false,
   activeModal: null,
+  modalData: null,
   toasts: [],
   isSidebarCollapsed: false,
   isMobileMenuOpen: false,
+  isLiveActivitySheetOpen: false,
 
   openWalletDrawer: () => set({ isWalletDrawerOpen: true }),
   closeWalletDrawer: () => set({ isWalletDrawerOpen: false }),
 
   setOnboardingOpen: (open: boolean) => set({ isOnboardingOpen: open }),
 
-  openModal: (id: string) => set({ activeModal: id }),
-  closeModal: () => set({ activeModal: null }),
+  openModal: (id: string, data?: any) => set({ activeModal: id, modalData: data }),
+  closeModal: () => set({ activeModal: null, modalData: null }),
 
   addToast: (toast) => {
     const id = `toast-${++toastCounter}`;
@@ -65,4 +71,6 @@ export const useUIStore = create<UIStore>((set) => ({
     set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
 
   setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
+  
+  setLiveActivitySheetOpen: (open) => set({ isLiveActivitySheetOpen: open }),
 }));

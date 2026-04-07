@@ -101,7 +101,7 @@ export function LiveTicker() {
   );
 }
 
-const TickerRow = memo(function TickerRow({
+export const TickerRow = memo(function TickerRow({
   trade,
   index,
   isPaused,

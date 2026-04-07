@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Sparkline } from '@/components/token/Sparkline';
 import { WatchlistButton } from '@/components/social/WatchlistButton';
 import { formatNumber, formatTimeAgo } from '@/lib/format';
+import { useUIStore } from '@/store/uiStore';
 import type { TokenCardData } from '@/lib/types';
 
 const HOUR = 3_600_000;
@@ -35,6 +36,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     index = 0,
   } = props;
 
+  const { openModal } = useUIStore();
   const [isHovered, setIsHovered] = useState(false);
   const [supplyWidth, setSupplyWidth] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -373,7 +375,12 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
           >
             BUY ↗
           </span>
-          <span
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openModal('comment-modal', props);
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -381,11 +388,15 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
               fontFamily: 'var(--font-ui)',
               fontSize: '12px',
               color: 'var(--text-muted)',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 0,
             }}
           >
             <MessageCircle size={14} />
             {commentCount}
-          </span>
+          </button>
           <span
             style={{
               display: 'inline-flex',

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useTickerStore, type TradeEvent, type GraduationEvent } from '@/store/tickerStore';
+import { useUIStore } from '@/store/uiStore';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8080';
@@ -87,7 +88,17 @@ export function useTradeTicker() {
 
       const tick = () => {
         if (!mountedRef.current) return;
-        addTrade(generateMockTrade());
+        const trade = generateMockTrade();
+        addTrade(trade);
+        if (trade.isWhale) {
+          const address = trade.walletAddress;
+          const shortAddress = `${address.slice(0, 4)}...${address.slice(-2)}`;
+          useUIStore.getState().addToast({
+            type: 'whale',
+            message: `${shortAddress} ${trade.type} ${trade.solAmount} SOL of $${trade.tokenSymbol}`,
+            href: `/token/${trade.tokenMint}`
+          });
+        }
       };
 
       // Random interval between 2-4s
@@ -128,7 +139,17 @@ export function useTradeTicker() {
           if ('type' in data && data.type === 'graduation') {
             handleGraduation(data as GraduationEvent);
           } else {
-            addTrade(data as TradeEvent);
+            const trade = data as TradeEvent;
+            addTrade(trade);
+            if (trade.isWhale) {
+              const address = trade.walletAddress;
+              const shortAddress = `${address.slice(0, 4)}...${address.slice(-2)}`;
+              useUIStore.getState().addToast({
+                type: 'whale',
+                message: `${shortAddress} ${trade.type} ${trade.solAmount} SOL of $${trade.tokenSymbol}`,
+                href: `/token/${trade.tokenMint}`
+              });
+            }
           }
         } catch {
           // malformed message

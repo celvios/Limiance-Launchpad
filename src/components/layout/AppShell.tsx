@@ -15,6 +15,9 @@ import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { MobileTopBar } from '@/components/mobile-nav/MobileTopBar';
 import { BottomNav } from '@/components/mobile-nav/BottomNav';
 import { MenuDrawer } from '@/components/mobile-nav/MenuDrawer';
+import { CommentModal } from '@/components/token/CommentModal';
+import { MobileLivePulse } from '@/components/layout/MobileLivePulse';
+import { LiveActivitySheet } from '@/components/layout/LiveActivitySheet';
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -77,6 +80,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       <ToastContainer />
       <BottomNav />
       <MenuDrawer />
+      <CommentModal />
+      <MobileLivePulse />
+      <LiveActivitySheet />
     </>
   );
 }
