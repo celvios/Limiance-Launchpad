@@ -1,0 +1,36 @@
+# ── Node / npm ────────────────────────────────────────────────────────────────
+node_modules/
+.npm
+npm-debug.log*
+
+# ── Next.js ───────────────────────────────────────────────────────────────────
+launchpad-frontend/.next/
+launchpad-frontend/out/
+launchpad-frontend/build/
+
+# ── Environment secrets ───────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+backend/.env
+launchpad-frontend/.env.local
+
+# ── Rust / Anchor ─────────────────────────────────────────────────────────────
+program/target/
+**/*.rs.bk
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── Prisma ────────────────────────────────────────────────────────────────────
+backend/prisma/migrations/dev.db
+backend/prisma/*.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/

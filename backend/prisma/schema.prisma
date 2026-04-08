@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core token record — mirrors on-chain TokenConfig, extended with off-chain data
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Token {
+  id                  String    @id @default(cuid())
+  mint                String    @unique
+  creator             String
+  name                String
+  symbol              String
+  uri                 String
+  description         String    @default("")
+
+  // On-chain supply data (stored as BigInt to match u64)
+  supplyCap           BigInt
+  currentSupply       BigInt    @default(0)
+  graduationThreshold BigInt
+  creatorAllocation   Int
+
+  // Curve configuration
+  curveType           String    // "linear" | "exponential" | "sigmoid"
+  curveParamA         BigInt
+  curveParamB         BigInt
+  curveParamC         BigInt
+
+  // Lifecycle
+  status              String    @default("active")  // "active" | "graduated" | "cancelled"
+  raydiumPoolId       String?   // populated after graduation
+
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  trades    Trade[]
+  comments  Comment[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([creator])
+  @@index([symbol])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trade events — indexed from Helius webhooks
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Trade {
+  id            String   @id @default(cuid())
+  tokenMint     String
+  walletAddress String
+  type          String   // "buy" | "sell"
+  amount        BigInt   // token amount (smallest unit, 6 decimals)
+  solAmount     BigInt   // lamports
+  pricePerToken BigInt   // lamports per token
+  txSignature   String   @unique
+  timestamp     DateTime
+  isWhale       Boolean  @default(false)
+
+  token Token @relation(fields: [tokenMint], references: [mint])
+
+  @@index([tokenMint])
+  @@index([walletAddress])
+  @@index([timestamp])
+  @@index([tokenMint, timestamp])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comments — signed with wallet key, stored off-chain
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Comment {
+  id            String   @id @default(cuid())
+  tokenMint     String
+  walletAddress String
+  message       String   @db.Text
+  signature     String   // ed25519 signature of (tokenMint + message + timestamp)
+  upvotes       Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  token Token @relation(fields: [tokenMint], references: [mint])
+
+  @@index([tokenMint])
+  @@index([tokenMint, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User profiles — off-chain, wallet-keyed
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Profile {
+  id             String   @id @default(cuid())
+  walletAddress  String   @unique
+  username       String   @unique
+  bio            String   @default("") @db.Text
+  profilePicUri  String   @default("")   // IPFS URI
+  coverUri       String   @default("")   // IPFS URI
+  onboarded      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([username])
+  @@index([onboarded])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Social graph
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Follow {
+  id              String   @id @default(cuid())
+  followerWallet  String
+  followingWallet String
+  createdAt       DateTime @default(now())
+
+  @@unique([followerWallet, followingWallet])
+  @@index([followerWallet])
+  @@index([followingWallet])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watchlist
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Watchlist {
+  id            String   @id @default(cuid())
+  walletAddress String
+  tokenMint     String
+  createdAt     DateTime @default(now())
+
+  @@unique([walletAddress, tokenMint])
+  @@index([walletAddress])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment upvotes (normalized to prevent double-voting)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CommentUpvote {
+  id            String   @id @default(cuid())
+  commentId     String
+  walletAddress String
+  createdAt     DateTime @default(now())
+
+  @@unique([commentId, walletAddress])
+  @@index([commentId])
+}
