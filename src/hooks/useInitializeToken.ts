@@ -156,7 +156,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
         // ── Send transaction ─────────────────────────────────────────────────
         setState('confirming');
 
-        const txSignature = await program.methods
+        const txSignature = await (program.methods as any)
           .initializeToken(params)
           .accounts({
             creator: wallet.publicKey,

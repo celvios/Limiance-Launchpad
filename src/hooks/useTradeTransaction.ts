@@ -102,7 +102,7 @@ export function useBuy(mint: string) {
           return { ...old, currentSupply: (cur + params.amount).toString() };
         });
 
-        const txSignature = await program.methods
+        const txSignature = await (program.methods as any)
           .buy(amount, maxSolCost)
           .accounts({
             buyer: wallet.publicKey,
@@ -201,7 +201,7 @@ export function useSell(mint: string) {
           return { ...old, currentSupply: next.toString() };
         });
 
-        const txSignature = await program.methods
+        const txSignature = await (program.methods as any)
           .sell(amount, minSolReturn)
           .accounts({
             seller: wallet.publicKey,
