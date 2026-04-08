@@ -27,9 +27,9 @@ const DEFAULT_SLIPPAGE_BPS = 200;
 
 function applySlippage(amount: bigint, bps: number, direction: 'up' | 'down'): bigint {
   if (direction === 'up') {
-    return (amount * BigInt(10_000 + bps)) / 10_000n;
+    return (amount * BigInt(10000 + bps)) / BigInt(10000);
   }
-  return (amount * BigInt(10_000 - bps)) / 10_000n;
+  return (amount * BigInt(10000 - bps)) / BigInt(10000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ export function useSell(mint: string) {
         queryClient.setQueryData(['token-detail', mint], (old: Record<string, unknown> | undefined) => {
           if (!old) return old;
           const cur = BigInt(String(old.currentSupply ?? '0'));
-          const next = cur > params.amount ? cur - params.amount : 0n;
+          const next = cur > params.amount ? cur - params.amount : BigInt(0);
           return { ...old, currentSupply: next.toString() };
         });
 
