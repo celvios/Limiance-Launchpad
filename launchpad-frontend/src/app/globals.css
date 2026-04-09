@@ -1,0 +1,658 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+}
+
+/* ── Design System Variables ── */
+:root {
+  /* ─── Base ─────────────────────────────────── */
+  --bg-base:        #090909;
+  --bg-card:        #0F0F0F;
+  --bg-elevated:    #161616;
+  --bg-panel:       #111318;
+  --border:         #1E1E1E;
+  --border-active:  #2E2E2E;
+
+  /* ─── Typography ───────────────────────────── */
+  --text-primary:   #FFFFFF;
+  --text-secondary: #B0B0B0;
+  --text-muted:     #555555;
+
+  /* ─── Limiance Brand Blue ──────────────────── */
+  --brand:          #3B82F6;
+  --brand-hover:    #2563EB;
+  --brand-dim:      rgba(59, 130, 246, 0.10);
+  --brand-border:   rgba(59, 130, 246, 0.30);
+
+  /* ─── Trading Semantics ─────────────────────── */
+  --buy:            #00FF66;
+  --buy-dim:        rgba(0, 255, 102, 0.08);
+  --sell:           #FF2D55;
+  --sell-dim:       rgba(255, 45, 85, 0.08);
+
+  /* ─── Status ────────────────────────────────── */
+  --graduation:     #FFE500;
+  --graduation-dim: rgba(255, 229, 0, 0.08);
+  --whale:          #3B82F6;
+  --new:            #F97316;
+
+  /* ─── Overlays ──────────────────────────────── */
+  --overlay-soft:   rgba(0, 0, 0, 0.6);
+  --overlay-hard:   rgba(0, 0, 0, 0.85);
+
+  /* ─── Shadows ───────────────────────────────── */
+  --shadow-dropdown: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-modal:    0 24px 64px rgba(0, 0, 0, 0.8);
+
+  /* ─── Fonts ─────────────────────────────────── */
+  --font-display: 'Syne', sans-serif;
+  --font-mono:    'IBM Plex Mono', monospace;
+  --font-ui:      'DM Sans', sans-serif;
+
+  /* ─── Spacing ───────────────────────────────── */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
+  --space-4: 16px;  --space-5: 24px;  --space-6: 32px;
+  --space-7: 48px;  --space-8: 64px;  --space-9: 96px;
+
+  /* ─── Radius ────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ─── Animation ─────────────────────────────── */
+  --duration-fast:  100ms;
+  --duration-base:  200ms;
+  --duration-slow:  400ms;
+  --ease-default:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ─── Glassmorphism (Onboarding) ────────────── */
+  --glass-bg:       rgba(255, 255, 255, 0.04);
+  --glass-border:   rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { 
+  background-color: var(--bg-base); 
+  color: var(--text-primary); 
+  font-family: var(--font-ui);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* ── Animations ── */
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes supplyPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--graduation); }
+  50%      { box-shadow: 0 0 16px 4px var(--graduation); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideDownFromTop {
+  from { opacity: 0; transform: translateY(-100%) translateX(-50%); }
+  to   { opacity: 1; transform: translateY(0) translateX(-50%); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Marquee ── */
+@keyframes marqueeScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Utility Classes ── */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Responsive Layout ── */
+
+/* Desktop: show sidebar + ticker + desktop topbar, hide mobile */
+.sidebar-wrapper { display: flex; }
+.ticker-wrapper { display: flex; }
+.desktop-topbar { display: flex; }
+.mobile-topbar { display: none !important; }
+.bottom-nav { display: none !important; }
+.menu-drawer { display: none !important; }
+.mobile-nav { display: none !important; }
+
+/* Tablet: hide ticker, sidebar icon-only */
+@media (max-width: 1279px) {
+  .ticker-wrapper { display: none; }
+  .sidebar-desktop {
+    width: 60px !important;
+    padding: var(--space-2) !important;
+  }
+  .sidebar-desktop span { display: none; }
+  .sidebar-desktop a { justify-content: center; }
+  .sidebar-desktop .logo-lockup-text { display: none; }
+}
+
+/* Mobile: hide sidebar + desktop topbar, show mobile nav */
+@media (max-width: 1023px) {
+  .sidebar-wrapper { display: none !important; }
+  .desktop-topbar { display: none !important; }
+  .mobile-topbar { display: flex !important; }
+  .bottom-nav { display: flex !important; }
+  .menu-drawer { display: block !important; }
+  .mobile-nav { display: flex !important; }
+  #main-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .marquee-wrapper { display: none; }
+}
+
+/* Footer responsive */
+@media (max-width: 768px) {
+  .footer-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: var(--space-5) !important;
+  }
+  .footer-grid > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Placeholder style */
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+
+/* ── Token Page Layout ── */
+.token-page-grid {
+  grid-template-columns: 1fr 400px;
+}
+
+@media (max-width: 1279px) {
+  .token-page-grid {
+    grid-template-columns: 1fr 340px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .token-page-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .token-page-grid > div:last-child {
+    position: static !important;
+    order: -1; /* Trade panel on top on mobile */
+  }
+}
+
+/* ── Graduation Overlay ── */
+@keyframes graduationGlow {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.6; }
+}
+
+.graduation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  background: rgba(255, 229, 0, 0.06);
+  animation: graduationGlow 2s infinite;
+}
+
+/* ── Phase 4: Create Wizard ── */
+@keyframes checkmarkPop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes drawCheck {
+  from { stroke-dashoffset: 40; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Review grid responsive */
+@media (max-width: 640px) {
+  .review-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Input focus state global */
+input:focus, textarea:focus, select:focus {
+  border-color: var(--border-active) !important;
+}
+
+/* ── Phase 5: Social Layer ── */
+@keyframes heartPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+/* Profile holdings table responsive */
+@media (max-width: 768px) {
+  .holdings-table {
+    overflow-x: auto;
+  }
+}
+
+/* ── Phase 6: Real-Time ── */
+@keyframes tradeEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 60px;
+  }
+}
+
+@keyframes priceFlashGreen {
+  0%   { background-color: transparent; }
+  20%  { background-color: var(--buy-dim); }
+  100% { background-color: transparent; }
+}
+
+@keyframes priceFlashRed {
+  0%   { background-color: transparent; }
+  20%  { background-color: var(--sell-dim); }
+  100% { background-color: transparent; }
+}
+
+@keyframes digitSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes digitSlideDown {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+
+/* ── Phase 7: Mobile & Polish ── */
+@keyframes slideUpSheet {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes swipeRevealRight {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes swipeRevealLeft {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ══════════════════════════════════════════════════════
+   Onboarding — Glassmorphism Module
+   Intentional departure from app-wide solid color system.
+   This is the one moment before the user enters the product.
+   ══════════════════════════════════════════════════════ */
+
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(6, 6, 6, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Glass Card */
+.glass-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 32px 64px rgba(0, 0, 0, 0.7);
+  animation: glassCardEnter 350ms var(--ease-spring) both;
+  overflow: hidden;
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.01) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes glassCardEnter {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Glass Input */
+.glass-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  padding: 12px 16px;
+  width: 100%;
+  transition: border-color 200ms, background 200ms;
+  outline: none;
+}
+
+.glass-input::placeholder {
+  color: var(--text-muted);
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Brand blue valid state — platform action, not trading */
+.glass-input.valid {
+  border-color: var(--brand-border);
+}
+
+.glass-input.error {
+  border-color: rgba(255, 45, 85, 0.5);
+}
+
+/* Glass Button — Primary (Brand Blue) */
+.glass-button-primary {
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  border-radius: 10px;
+  color: #FFFFFF;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 14px 24px;
+  width: 100%;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, transform 100ms;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.glass-button-primary:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.glass-button-primary:active {
+  transform: scale(0.98);
+}
+
+.glass-button-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Glass Button — Ghost */
+.glass-button-ghost {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 150ms;
+  padding: 8px 0;
+}
+
+.glass-button-ghost:hover {
+  color: var(--text-secondary);
+}
+
+/* Glass Button — Outlined */
+.glass-button-outlined {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 14px 24px;
+  width: 100%;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.glass-button-outlined:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--text-primary);
+}
+
+/* Step Indicator Dots — Brand Blue */
+.step-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 24px;
+}
+
+.step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 300ms var(--ease-default);
+}
+
+.step-dot.active {
+  width: 20px;
+  border-radius: 3px;
+  background: var(--brand);
+}
+
+.step-dot.complete {
+  background: var(--brand);
+}
+
+/* Step Transitions */
+.step-content-enter {
+  animation: stepIn 250ms var(--ease-default) both;
+}
+
+.step-content-enter-reverse {
+  animation: stepInReverse 250ms var(--ease-default) both;
+}
+
+@keyframes stepIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes stepInReverse {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Upload Zones */
+.upload-zone {
+  border: 1.5px dashed rgba(255, 255, 255, 0.15);
+  transition: border-color 200ms, background 200ms;
+  cursor: pointer;
+}
+
+.upload-zone:hover {
+  border-color: rgba(255, 255, 255, 0.30);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Upload progress ring */
+@keyframes uploadSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Checkmark draw animation */
+@keyframes checkDraw {
+  from { stroke-dashoffset: 40; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Staggered fade-in for welcome text */
+.stagger-fade {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: staggerFadeIn 350ms var(--ease-default) both;
+}
+
+@keyframes staggerFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Marquee Ticker */
+.marquee-wrapper {
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--brand-border);
+  border-bottom: 1px solid var(--brand-border);
+  flex-shrink: 0;
+}
+
+.marquee-track {
+  animation: marqueeScroll 40s linear infinite;
+  display: flex;
+  width: max-content;
+  gap: 48px;
+  padding: 10px 0;
+}
+
+.marquee-wrapper:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+/* Star Glyph floating animation */
+@keyframes starFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(8deg); }
+}
+
+/* Mobile Onboarding */
+@media (max-width: 767px) {
+  .onboarding-card {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh;
+    border-radius: 0 !important;
+    overflow-y: auto;
+  }
+
+  .onboarding-card::before {
+    border-radius: 0 !important;
+  }
+}
+
+/* Avatar crop overlay */
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(10, 10, 10, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
