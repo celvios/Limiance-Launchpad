@@ -31,7 +31,7 @@ export function MobileLivePulse() {
   return (
     <div
       onClick={() => setLiveActivitySheetOpen(true)}
-      className="md:hidden"
+      className="mobile-live-pulse"
       style={{
         position: 'fixed',
         bottom: 'calc(64px + env(safe-area-inset-bottom))', /* Above BottomNav */

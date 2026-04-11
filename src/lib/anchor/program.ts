@@ -27,7 +27,7 @@ export const SEEDS = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getProgram(provider: AnchorProvider): Program<any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new Program(idl as any, PROGRAM_ID, provider);
+  return new Program(idl as any, provider);
 }
 
 /**
@@ -46,7 +46,7 @@ export function getProgramReadonly(connection: Connection): Program<any> {
     { commitment: 'confirmed' }
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new Program(idl as any, PROGRAM_ID, provider);
+  return new Program(idl as any, provider);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

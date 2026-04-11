@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Rocket, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { LimianceLogo } from '@/components/ui/LimianceLogo';
 
 interface StepWelcomeProps {
   onNext: () => void;
@@ -15,24 +16,13 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
         className="stagger-fade"
         style={{
           textAlign: 'center',
-          marginBottom: 32,
+          marginBottom: 24,
           animationDelay: '200ms',
+          display: 'flex',
+          justifyContent: 'center',
         }}
       >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            background: 'rgba(0, 255, 102, 0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-          }}
-        >
-          <Rocket size={26} style={{ color: 'var(--buy)' }} />
-        </div>
+        <LimianceLogo size={36} />
       </div>
 
       {/* Title */}
@@ -40,12 +30,12 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
         className="stagger-fade"
         style={{
           fontFamily: 'var(--font-display)',
-          fontSize: '52px',
+          fontSize: '40px',
           color: 'var(--text-primary)',
           textAlign: 'center',
           letterSpacing: '3px',
           lineHeight: 1,
-          marginBottom: 20,
+          marginBottom: 16,
           animationDelay: '280ms',
         }}
       >

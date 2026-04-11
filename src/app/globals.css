@@ -181,6 +181,8 @@ body {
 .bottom-nav { display: none !important; }
 .menu-drawer { display: none !important; }
 .mobile-nav { display: none !important; }
+.mobile-live-pulse { display: none !important; }
+.mobile-live-sheet { display: none !important; }
 
 /* Tablet: hide ticker, sidebar icon-only */
 @media (max-width: 1279px) {
@@ -202,6 +204,8 @@ body {
   .bottom-nav { display: flex !important; }
   .menu-drawer { display: block !important; }
   .mobile-nav { display: flex !important; }
+  .mobile-live-pulse { display: flex !important; }
+  .mobile-live-sheet { display: flex !important; }
   #main-content {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
@@ -379,7 +383,7 @@ input:focus, textarea:focus, select:focus {
 /* Glass Card */
 .glass-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(10, 12, 20, 0.88);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   border: 1px solid rgba(255, 255, 255, 0.10);
