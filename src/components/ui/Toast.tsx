@@ -32,7 +32,7 @@ function ToastItem({ toast }: { toast: ToastType }) {
           borderLeft: `3px solid ${borderColors.whale}`,
           borderRadius: 'var(--radius-md)',
           boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-          animation: 'slideDownFromTop 400ms var(--ease-spring)',
+          animation: 'whaleSlideIn 350ms var(--ease-spring)',
           minWidth: '280px',
           maxWidth: '400px',
           cursor: toast.href ? 'pointer' : 'default',
@@ -127,26 +127,17 @@ export function ToastContainer() {
 
   return (
     <>
-      {/* Whale Toasts (Top) */}
+      {/* Whale Toast — top-right, one at a time */}
       {whaleToasts.length > 0 && (
         <div
           style={{
             position: 'fixed',
-            top: 'env(safe-area-inset-top, 16px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            top: '72px',
+            right: 'var(--space-5)',
             zIndex: 60,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-2)',
-            width: 'calc(100% - 32px)',
-            maxWidth: '400px',
-            marginTop: '16px'
           }}
         >
-          {whaleToasts.map((toast) => (
-            <ToastItem key={toast.id} toast={toast} />
-          ))}
+          <ToastItem key={whaleToasts[whaleToasts.length - 1].id} toast={whaleToasts[whaleToasts.length - 1]} />
         </div>
       )}
 

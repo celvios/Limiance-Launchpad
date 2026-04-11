@@ -51,10 +51,14 @@ export const useUIStore = create<UIStore>((set) => ({
 
   addToast: (toast) => {
     const id = `toast-${++toastCounter}`;
-    set((state) => ({
-      toasts: [...state.toasts.slice(-2), { ...toast, id }],
-    }));
-    const duration = toast.duration ?? 5000;
+    set((state) => {
+      // Whale toasts replace any existing whale toast — never stack
+      const filtered = toast.type === 'whale'
+        ? state.toasts.filter((t) => t.type !== 'whale')
+        : state.toasts.slice(-2);
+      return { toasts: [...filtered, { ...toast, id }] };
+    });
+    const duration = toast.type === 'whale' ? 3000 : (toast.duration ?? 5000);
     setTimeout(() => {
       set((state) => ({
         toasts: state.toasts.filter((t) => t.id !== id),
