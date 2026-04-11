@@ -51,7 +51,7 @@ export function LiveActivitySheet() {
         display: 'flex',
         flexDirection: 'column',
       }}
-      className="md:hidden"
+      className="mobile-live-sheet"
     >
       {/* Backdrop */}
       <div
