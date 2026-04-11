@@ -75,7 +75,7 @@ export function useBuy(mint: string) {
         const [platformConfig] = derivePlatformConfig();
 
         // Fetch platform fee vault from on-chain config
-        const platformConfigAccount = await program.account.platformConfig.fetch(platformConfig);
+        const platformConfigAccount = await (program.account as any).platformConfig.fetch(platformConfig);
         const feeVault = platformConfigAccount.feeVault as PublicKey;
 
         // Buyer ATA
