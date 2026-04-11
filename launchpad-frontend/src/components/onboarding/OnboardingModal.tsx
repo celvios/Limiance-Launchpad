@@ -99,11 +99,11 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
         />
       ))}
 
-      <GlassCard width={460}>
+      <GlassCard width={380}>
         {/* Step content — card stays, content transitions */}
         <div
           key={step}
-          style={{ minHeight: 320 }}
+          style={{ minHeight: 240 }}
         >
           {stepContent}
         </div>
