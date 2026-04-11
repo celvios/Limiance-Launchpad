@@ -1,3 +1,6 @@
 {
-  "rootDirectory": "launchpad-frontend"
+  "installCommand": "cd launchpad-frontend && npm install",
+  "buildCommand": "cd launchpad-frontend && npm run build",
+  "outputDirectory": "launchpad-frontend/.next",
+  "framework": "nextjs"
 }
