@@ -19,109 +19,96 @@ import { addClient, removeClient } from './ws/server';
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
-const app = Fastify({
-  logger: {
-    level: IS_DEV ? 'info' : 'warn',
-    ...(IS_DEV && {
-      transport: {
-        target: 'pino-pretty',
-        options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
-      },
-    }),
-  },
-});
+async function main() {
+  const app = Fastify({
+    logger: {
+      level: IS_DEV ? 'info' : 'warn',
+    },
+  });
 
-// ── Plugins ───────────────────────────────────────────────────────────────────
+  // ── Plugins ─────────────────────────────────────────────────────────────────
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-  : [];
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : [];
 
-await app.register(cors, {
-  // Dev: allow all. Prod: use ALLOWED_ORIGINS env var (comma-separated).
-  // If ALLOWED_ORIGINS is not set in prod, fall back to permissive (safe for
-  // a public API; tighten once you have a stable frontend URL).
-  origin: IS_DEV || allowedOrigins.length === 0 ? true : allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-});
+  await app.register(cors, {
+    origin: IS_DEV || allowedOrigins.length === 0 ? true : allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  });
 
-await app.register(rateLimit, {
-  global: true,
-  max: 100,
-  timeWindow: '1 minute',
-  keyGenerator: (req) => req.ip,
-});
+  await app.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.ip,
+  });
 
-await app.register(multipart, {
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB
-    files: 1,
-  },
-});
+  await app.register(multipart, {
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  });
 
-// WebSocket support — clients connect at GET /ws
-await app.register(fastifyWebsocket);
+  await app.register(fastifyWebsocket);
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+  // ── Routes ───────────────────────────────────────────────────────────────────
 
-await app.register(tokenRoutes);
-await app.register(uploadRoutes);
-await app.register(webhookRoutes);
-await app.register(activityRoutes);
-await app.register(chartRoutes);
-await app.register(profileRoutes);
-await app.register(commentRoutes);
-await app.register(followRoutes);
+  await app.register(tokenRoutes);
+  await app.register(uploadRoutes);
+  await app.register(webhookRoutes);
+  await app.register(activityRoutes);
+  await app.register(chartRoutes);
+  await app.register(profileRoutes);
+  await app.register(commentRoutes);
+  await app.register(followRoutes);
 
-// ── WebSocket endpoint ────────────────────────────────────────────────────────
+  // ── WebSocket endpoint ───────────────────────────────────────────────────────
 
-app.get('/ws', { websocket: true }, (socket) => {
-  addClient(socket);
-  socket.on('close', () => removeClient(socket));
-  socket.on('error', () => removeClient(socket));
-});
+  app.get('/ws', { websocket: true }, (socket) => {
+    addClient(socket);
+    socket.on('close', () => removeClient(socket));
+    socket.on('error', () => removeClient(socket));
+  });
 
-// ── Health check ─────────────────────────────────────────────────────────────
+  // ── Health check ─────────────────────────────────────────────────────────────
 
-app.get('/health', async () => {
-  return { status: 'ok', timestamp: Date.now() };
-});
+  app.get('/health', async () => ({ status: 'ok', timestamp: Date.now() }));
 
-// ── Global error handler ──────────────────────────────────────────────────────
+  // ── Global error handler ──────────────────────────────────────────────────────
 
-app.setErrorHandler((error, req, reply) => {
-  app.log.error(error);
-  if (reply.statusCode >= 500 || !reply.statusCode) {
-    return reply.code(500).send({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
-  }
-  return reply.send({ error: error.message, code: 'ERROR' });
-});
+  app.setErrorHandler((error, _req, reply) => {
+    app.log.error(error);
+    if (!reply.statusCode || reply.statusCode >= 500) {
+      return reply.code(500).send({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    }
+    return reply.send({ error: error.message, code: 'ERROR' });
+  });
 
-// ── Startup ───────────────────────────────────────────────────────────────────
+  // ── DB connection ─────────────────────────────────────────────────────────────
 
-async function start() {
   try {
     await prisma.$connect();
     app.log.info('Database connected');
   } catch (err) {
-    app.log.error('Database connection failed:', err);
+    app.log.error({ err }, 'Database connection failed');
     process.exit(1);
   }
+
+  // ── Start listening ───────────────────────────────────────────────────────────
 
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
     app.log.info(`API server running on http://0.0.0.0:${PORT}`);
-    app.log.info(`WebSocket endpoint: ws://0.0.0.0:${PORT}/ws`);
+    app.log.info(`WebSocket: ws://0.0.0.0:${PORT}/ws`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
   }
+
+  process.on('SIGTERM', async () => {
+    await app.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  });
 }
 
-process.on('SIGTERM', async () => {
-  await app.close();
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-start();
+main();
