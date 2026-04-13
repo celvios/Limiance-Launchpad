@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# project notes / logs
+TODO.md
+*.txt
+*.log
+CLAUDE*.md
+GEMINI*.md
+AGENTS.md
+
+# Claude Code local memory — never commit
+.claude/
+
+# Legacy frontend scaffold — root is the real Next.js app
+launchpad-frontend/

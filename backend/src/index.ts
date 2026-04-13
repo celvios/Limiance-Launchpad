@@ -33,8 +33,15 @@ const app = Fastify({
 
 // ── Plugins ───────────────────────────────────────────────────────────────────
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+
 await app.register(cors, {
-  origin: IS_DEV ? true : (process.env.ALLOWED_ORIGINS ?? '').split(','),
+  // Dev: allow all. Prod: use ALLOWED_ORIGINS env var (comma-separated).
+  // If ALLOWED_ORIGINS is not set in prod, fall back to permissive (safe for
+  // a public API; tighten once you have a stable frontend URL).
+  origin: IS_DEV || allowedOrigins.length === 0 ? true : allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 });
 

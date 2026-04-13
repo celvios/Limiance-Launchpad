@@ -1,5 +1,18 @@
 version: "1"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Launchpad Backend — Render deployment
+#
+# HOW TO DEPLOY:
+#   1. Push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint.
+#   3. Connect your GitHub repo — Render auto-detects this file.
+#   4. After first deploy, set the secret env vars in the Render dashboard
+#      (listed under "Set these in dashboard" below).
+#   5. After `anchor deploy` on devnet, update PROGRAM_ID in the dashboard
+#      and trigger a manual redeploy.
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
   - type: web
     name: launchpad-backend
@@ -9,24 +22,25 @@ services:
     startCommand: npx prisma migrate deploy && node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
+
     envVars:
-      # Injected automatically from the database below
+      # ── Auto-injected from the Postgres database below ───────────────────────
       - key: DATABASE_URL
         fromDatabase:
           name: launchpad-db
           property: connectionString
 
+      # ── Static values — safe to commit ───────────────────────────────────────
       - key: NODE_ENV
         value: production
 
-      # Public Solana devnet RPC — no API key required.
-      # Replace with a Helius key later for higher rate limits.
-      - key: RPC_URL
-        value: https://api.devnet.solana.com
       - key: RPC_URL_DEVNET
         value: https://api.devnet.solana.com
 
-      # Replace after `anchor deploy --provider.cluster devnet`
+      - key: RPC_URL
+        value: https://api.devnet.solana.com
+
+      # Update this after `anchor deploy --provider.cluster devnet`
       - key: PROGRAM_ID
         value: Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS
 
@@ -36,12 +50,31 @@ services:
       - key: PINATA_GATEWAY
         value: https://gateway.pinata.cloud
 
-      # ── Set these manually in the Render dashboard after deploy ──────────────
-      # REDIS_URL          — from Upstash (https://upstash.com, free tier)
-      # HELIUS_WEBHOOK_SECRET — from Helius dashboard (can skip for now)
-      # PINATA_API_KEY      — from Pinata (needed for image uploads)
-      # PINATA_SECRET_API_KEY
-      # ALLOWED_ORIGINS    — your Vercel frontend URL, e.g. https://limiance.vercel.app
+      # ── Set these manually in the Render dashboard ────────────────────────────
+      #
+      # REDIS_URL
+      #   Optional but recommended. Get a free Redis from Upstash:
+      #   https://upstash.com → Create Database → Copy "UPSTASH_REDIS_REST_URL"
+      #   Use the ioredis-compatible URL format: rediss://:TOKEN@HOST:PORT
+      #   If not set, caching is disabled (API still works, just slower).
+      #
+      # ALLOWED_ORIGINS
+      #   Comma-separated list of allowed frontend origins.
+      #   Example: https://limiance.vercel.app,https://limiance.xyz
+      #   If not set, all origins are allowed (safe for a public API).
+      #
+      # HELIUS_WEBHOOK_SECRET
+      #   From the Helius dashboard. Required for the /webhook/helius endpoint
+      #   to verify incoming webhook payloads.
+      #   Can skip until you set up the Helius webhook subscription.
+      #
+      # PINATA_API_KEY + PINATA_SECRET_API_KEY
+      #   From https://pinata.cloud. Required for POST /api/upload (image uploads).
+      #   Without these, token creation with image upload will fail.
+      #
+      # RPC_URL / RPC_URL_DEVNET (optional upgrade)
+      #   Replace the public devnet URL above with a Helius key URL for
+      #   higher rate limits: https://devnet.helius-rpc.com/?api-key=YOUR_KEY
 
 databases:
   - name: launchpad-db
