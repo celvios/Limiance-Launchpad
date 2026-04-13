@@ -1,0 +1,25 @@
+[package]
+name = "launchpad"
+version = "0.1.0"
+description = "Solana bonding curve token launchpad"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "launchpad"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "0.30.0", features = ["init-if-needed"] }
+anchor-spl = { version = "0.30.0", features = ["token", "associated_token", "metadata"] }
+mpl-token-metadata = "4.1.2"
+
+# Phase 4: Raydium CPMM CPI — uncomment when integrating full pool creation.
+# Confirm devnet program ID at https://github.com/raydium-io/raydium-cpmm before enabling.
+# raydium-cpmm-cpi = { git = "https://github.com/raydium-io/raydium-cpmm", features = ["cpi"] }

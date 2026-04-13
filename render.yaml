@@ -1,0 +1,50 @@
+version: "1"
+
+services:
+  - type: web
+    name: launchpad-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && node dist/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Injected automatically from the database below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: launchpad-db
+          property: connectionString
+
+      - key: NODE_ENV
+        value: production
+
+      # Public Solana devnet RPC — no API key required.
+      # Replace with a Helius key later for higher rate limits.
+      - key: RPC_URL
+        value: https://api.devnet.solana.com
+      - key: RPC_URL_DEVNET
+        value: https://api.devnet.solana.com
+
+      # Replace after `anchor deploy --provider.cluster devnet`
+      - key: PROGRAM_ID
+        value: Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS
+
+      - key: WHALE_THRESHOLD_SOL
+        value: "10"
+
+      - key: PINATA_GATEWAY
+        value: https://gateway.pinata.cloud
+
+      # ── Set these manually in the Render dashboard after deploy ──────────────
+      # REDIS_URL          — from Upstash (https://upstash.com, free tier)
+      # HELIUS_WEBHOOK_SECRET — from Helius dashboard (can skip for now)
+      # PINATA_API_KEY      — from Pinata (needed for image uploads)
+      # PINATA_SECRET_API_KEY
+      # ALLOWED_ORIGINS    — your Vercel frontend URL, e.g. https://limiance.vercel.app
+
+databases:
+  - name: launchpad-db
+    databaseName: launchpad
+    user: launchpad_user
+    plan: free

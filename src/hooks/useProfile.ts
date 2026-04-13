@@ -1,4 +1,7 @@
+'use client';
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useWallet } from '@solana/wallet-adapter-react';
 import {
   fetchProfile,
   updateProfile,
@@ -21,11 +24,20 @@ export function useProfile(walletAddress: string) {
 }
 
 export function useUpdateProfile(walletAddress: string) {
+  const { publicKey, signMessage } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { username: string; bio: string }) =>
-      updateProfile(walletAddress, data),
+    mutationFn: async (data: { username: string; bio: string }) => {
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+
+      const timestamp = Date.now();
+      const message = `ACTION:UPDATE_PROFILE|DATA:${data.username}|TIMESTAMP:${timestamp}`;
+      const sig = await signMessage(new TextEncoder().encode(message));
+      const signature = Buffer.from(sig).toString('base64');
+
+      return updateProfile(walletAddress, data, signature, timestamp);
+    },
     onSuccess: (updatedProfile: UserProfile) => {
       queryClient.setQueryData(['profile', walletAddress], updatedProfile);
     },
@@ -33,10 +45,21 @@ export function useUpdateProfile(walletAddress: string) {
 }
 
 export function useFollowUser(walletAddress: string) {
+  const { publicKey, signMessage } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => followUser(walletAddress),
+    mutationFn: async () => {
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+
+      const followerWallet = publicKey.toBase58();
+      const timestamp = Date.now();
+      const message = `ACTION:FOLLOW|DATA:${walletAddress}|TIMESTAMP:${timestamp}`;
+      const sig = await signMessage(new TextEncoder().encode(message));
+      const signature = Buffer.from(sig).toString('base64');
+
+      return followUser(followerWallet, walletAddress, signature, timestamp);
+    },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['profile', walletAddress] });
       const prev = queryClient.getQueryData<UserProfile>(['profile', walletAddress]);
@@ -58,10 +81,21 @@ export function useFollowUser(walletAddress: string) {
 }
 
 export function useUnfollowUser(walletAddress: string) {
+  const { publicKey, signMessage } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => unfollowUser(walletAddress),
+    mutationFn: async () => {
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+
+      const followerWallet = publicKey.toBase58();
+      const timestamp = Date.now();
+      const message = `ACTION:UNFOLLOW|DATA:${walletAddress}|TIMESTAMP:${timestamp}`;
+      const sig = await signMessage(new TextEncoder().encode(message));
+      const signature = Buffer.from(sig).toString('base64');
+
+      return unfollowUser(followerWallet, walletAddress, signature, timestamp);
+    },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['profile', walletAddress] });
       const prev = queryClient.getQueryData<UserProfile>(['profile', walletAddress]);
