@@ -40,15 +40,17 @@ services:
       - key: RPC_URL
         value: https://api.devnet.solana.com
 
-      # Update this after `anchor deploy --provider.cluster devnet`
       - key: PROGRAM_ID
-        value: Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS
+        value: F97Ry5kDim5mvtJpZwYcwh3xcrGcna1c4hRhgNUHiV4C
 
       - key: WHALE_THRESHOLD_SOL
         value: "10"
 
       - key: PINATA_GATEWAY
         value: https://gateway.pinata.cloud
+
+      - key: ALLOWED_ORIGINS
+        value: https://limiance-launchpad.onrender.com
 
       # ── Set these manually in the Render dashboard ────────────────────────────
       #

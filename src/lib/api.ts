@@ -148,8 +148,17 @@ export async function fetchFeedTokens(
   }
 
   // ── Real API ──
+  // Map frontend filter names to backend-accepted enum values
+  const filterMap: Record<string, string> = {
+    forYou: 'new',
+    new: 'new',
+    trending: 'trending',
+    near_grad: 'near_grad',
+    graduated: 'graduated',
+    following: 'following',
+  };
   const searchParams = new URLSearchParams({
-    filter: params.filter,
+    filter: filterMap[params.filter] ?? 'new',
     ...(params.cursor && { cursor: params.cursor }),
     ...(params.limit && { limit: String(params.limit) }),
   });
@@ -169,16 +178,25 @@ export async function fetchExploreTokens(
   }
 
   // ── Real API ──
+  // Backend has no /tokens/explore — use /tokens with filter mapping
+  const filterMap: Record<string, string> = {
+    all: 'new',
+    new: 'new',
+    trending: 'trending',
+    nearGraduation: 'near_grad',
+    graduated: 'graduated',
+  };
   const searchParams = new URLSearchParams({
-    filter: params.filter,
-    sort: params.sort,
+    filter: filterMap[params.filter] ?? 'new',
     ...(params.cursor && { cursor: params.cursor }),
     ...(params.limit && { limit: String(params.limit) }),
   });
 
-  const res = await fetch(`${API_BASE_URL}/tokens/explore?${searchParams.toString()}`);
+  const res = await fetch(`${API_BASE_URL}/tokens?${searchParams.toString()}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json() as Promise<TokenListResponse>;
+  // Wrap to match TokenListResponse shape
+  const data = await res.json() as TokenListResponse;
+  return data;
 }
 
 export async function fetchFeaturedTokens(): Promise<TokenCardData[]> {
@@ -188,9 +206,11 @@ export async function fetchFeaturedTokens(): Promise<TokenCardData[]> {
   }
 
   // ── Real API ──
-  const res = await fetch(`${API_BASE_URL}/tokens/featured`);
+  // Backend has no /tokens/featured — use trending tokens as "featured"
+  const res = await fetch(`${API_BASE_URL}/tokens?filter=trending&limit=6`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json() as Promise<TokenCardData[]>;
+  const data = await res.json() as { tokens: TokenCardData[] };
+  return data.tokens;
 }
 
 /* ── Phase 3: Token Detail ── */
