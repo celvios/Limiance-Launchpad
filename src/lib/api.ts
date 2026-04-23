@@ -531,7 +531,8 @@ export async function fetchProfileTokens(
 
   const res = await fetch(`${API_BASE_URL}/profiles/${walletAddress}/tokens`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json() as Promise<TokenCardData[]>;
+  const data = await res.json() as { tokens: TokenCardData[] };
+  return data.tokens ?? [];
 }
 
 export async function fetchProfileHoldings(

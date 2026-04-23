@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { getOrCreateSession } from '@/lib/session';
 import {
   fetchProfile,
   updateProfile,
@@ -30,12 +31,7 @@ export function useUpdateProfile(walletAddress: string) {
   return useMutation({
     mutationFn: async (data: { username: string; bio: string }) => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
-
-      const timestamp = Date.now();
-      const message = `ACTION:UPDATE_PROFILE|DATA:${data.username}|TIMESTAMP:${timestamp}`;
-      const sig = await signMessage(new TextEncoder().encode(message));
-      const signature = Buffer.from(sig).toString('base64');
-
+      const { signature, timestamp } = await getOrCreateSession(walletAddress, signMessage);
       return updateProfile(walletAddress, data, signature, timestamp);
     },
     onSuccess: (updatedProfile: UserProfile) => {
@@ -51,13 +47,8 @@ export function useFollowUser(walletAddress: string) {
   return useMutation({
     mutationFn: async () => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
-
       const followerWallet = publicKey.toBase58();
-      const timestamp = Date.now();
-      const message = `ACTION:FOLLOW|DATA:${walletAddress}|TIMESTAMP:${timestamp}`;
-      const sig = await signMessage(new TextEncoder().encode(message));
-      const signature = Buffer.from(sig).toString('base64');
-
+      const { signature, timestamp } = await getOrCreateSession(followerWallet, signMessage);
       return followUser(followerWallet, walletAddress, signature, timestamp);
     },
     onMutate: async () => {
@@ -87,13 +78,8 @@ export function useUnfollowUser(walletAddress: string) {
   return useMutation({
     mutationFn: async () => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
-
       const followerWallet = publicKey.toBase58();
-      const timestamp = Date.now();
-      const message = `ACTION:UNFOLLOW|DATA:${walletAddress}|TIMESTAMP:${timestamp}`;
-      const sig = await signMessage(new TextEncoder().encode(message));
-      const signature = Buffer.from(sig).toString('base64');
-
+      const { signature, timestamp } = await getOrCreateSession(followerWallet, signMessage);
       return unfollowUser(followerWallet, walletAddress, signature, timestamp);
     },
     onMutate: async () => {
