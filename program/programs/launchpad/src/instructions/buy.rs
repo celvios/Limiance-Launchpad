@@ -137,7 +137,7 @@ pub fn handler(ctx: Context<Buy>, amount: u64, max_sol_cost: u64) -> Result<()> 
     // 6. Transfer cost → vault.
     system_program::transfer(
         CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.buyer.to_account_info(),
                 to: ctx.accounts.sol_vault.to_account_info(),
@@ -150,7 +150,7 @@ pub fn handler(ctx: Context<Buy>, amount: u64, max_sol_cost: u64) -> Result<()> 
     if fee > 0 {
         system_program::transfer(
             CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.system_program.key(),
                 system_program::Transfer {
                     from: ctx.accounts.buyer.to_account_info(),
                     to: ctx.accounts.fee_vault.to_account_info(),
@@ -171,7 +171,7 @@ pub fn handler(ctx: Context<Buy>, amount: u64, max_sol_cost: u64) -> Result<()> 
 
     mint_to(
         CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             MintTo {
                 mint: ctx.accounts.mint.to_account_info(),
                 to: ctx.accounts.buyer_ata.to_account_info(),

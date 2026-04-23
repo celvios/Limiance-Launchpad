@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "programs/*"
+    "programs/launchpad"
 ]
 resolver = "2"
 

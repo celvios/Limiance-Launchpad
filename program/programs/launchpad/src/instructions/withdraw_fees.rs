@@ -54,7 +54,7 @@ pub fn handler(ctx: Context<WithdrawFees>, amount: u64) -> Result<()> {
     // that was passed by the authority at initialize_platform time.
     system_program::transfer(
         CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.fee_vault.to_account_info(),
                 to: ctx.accounts.recipient.to_account_info(),

@@ -1,0 +1,10 @@
+# Short target-dir prevents Windows extended-length paths (\\?\) that break MinGW ld.
+[build]
+target-dir = "C:\\cargo_target"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+rustflags = [
+  "-C", "link-arg=-LC:\\Users\\toluk\\scoop\\apps\\gcc\\current\\x86_64-w64-mingw32\\lib",
+  "-C", "link-arg=-LC:\\Users\\toluk\\scoop\\apps\\gcc\\current\\lib\\gcc\\x86_64-w64-mingw32\\15.2.0",
+]

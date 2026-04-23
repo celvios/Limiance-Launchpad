@@ -4,7 +4,6 @@ use anchor_lang::prelude::*;
 /// PDA seeds: `["platform_config"]`
 /// Created once by the platform authority at deploy time.
 #[account]
-#[derive(Default)]
 pub struct PlatformConfig {
     /// The wallet that can update fees and withdraw accumulated fees.
     pub authority: Pubkey,          // 32
@@ -21,6 +20,18 @@ pub struct PlatformConfig {
 
     /// Reserved bytes for future protocol upgrades without migration.
     pub _reserved: [u8; 64],        // 64
+}
+
+impl Default for PlatformConfig {
+    fn default() -> Self {
+        Self {
+            authority: Pubkey::default(),
+            fee_basis_points: 0,
+            fee_vault: Pubkey::default(),
+            bump: 0,
+            _reserved: [0u8; 64],
+        }
+    }
 }
 // Discriminator: 8
 // Total: 8 + 32 + 2 + 32 + 1 + 64 = 139

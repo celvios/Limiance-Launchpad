@@ -32,8 +32,9 @@ use anchor_lang::system_program;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{
-        burn, close_account, mint_to, set_authority, spl_token::instruction::AuthorityType, Burn,
+        burn, close_account, mint_to, set_authority, Burn,
         CloseAccount, Mint, MintTo, SetAuthority, Token, TokenAccount,
+        spl_token::instruction::AuthorityType,
     },
 };
 
@@ -136,7 +137,7 @@ pub fn handler(ctx: Context<Graduate>) -> Result<()> {
     if tokens_remaining > 0 {
         mint_to(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 MintTo {
                     mint: ctx.accounts.mint.to_account_info(),
                     to: ctx.accounts.program_token_ata.to_account_info(),
@@ -163,7 +164,7 @@ pub fn handler(ctx: Context<Graduate>) -> Result<()> {
     if graduation_fee > 0 {
         system_program::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.system_program.key(),
                 system_program::Transfer {
                     from: ctx.accounts.sol_vault.to_account_info(),
                     to: ctx.accounts.fee_vault.to_account_info(),
@@ -221,7 +222,7 @@ pub fn handler(ctx: Context<Graduate>) -> Result<()> {
     if program_ata_amount > 0 {
         burn(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 Burn {
                     mint: ctx.accounts.mint.to_account_info(),
                     from: ctx.accounts.program_token_ata.to_account_info(),
@@ -235,7 +236,7 @@ pub fn handler(ctx: Context<Graduate>) -> Result<()> {
 
     // 6. Close program ATA — reclaim rent to cranker.
     close_account(CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.token_program.key(),
         CloseAccount {
             account: ctx.accounts.program_token_ata.to_account_info(),
             destination: ctx.accounts.cranker.to_account_info(),
@@ -247,7 +248,7 @@ pub fn handler(ctx: Context<Graduate>) -> Result<()> {
     // 7. Revoke mint authority — no new tokens can ever be minted.
     set_authority(
         CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             SetAuthority {
                 account_or_mint: ctx.accounts.mint.to_account_info(),
                 current_authority: ctx.accounts.token_config.to_account_info(),

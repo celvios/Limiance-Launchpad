@@ -79,7 +79,7 @@ pub fn handler(ctx: Context<CancelToken>) -> Result<()> {
     if vault_lamports > 0 {
         anchor_lang::system_program::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.system_program.key(),
                 anchor_lang::system_program::Transfer {
                     from: ctx.accounts.sol_vault.to_account_info(),
                     to: ctx.accounts.creator.to_account_info(),

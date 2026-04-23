@@ -112,7 +112,7 @@ pub fn handler(ctx: Context<Sell>, amount: u64, min_sol_return: u64) -> Result<(
 
     burn(
         CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             Burn {
                 mint: ctx.accounts.mint.to_account_info(),
                 from: ctx.accounts.seller_ata.to_account_info(),
@@ -133,7 +133,7 @@ pub fn handler(ctx: Context<Sell>, amount: u64, min_sol_return: u64) -> Result<(
 
     system_program::transfer(
         CpiContext::new_with_signer(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.sol_vault.to_account_info(),
                 to: ctx.accounts.seller.to_account_info(),
