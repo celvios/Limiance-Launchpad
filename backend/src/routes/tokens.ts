@@ -147,6 +147,33 @@ export async function tokenRoutes(app: FastifyInstance) {
     return reply.code(200).send({ token });
   });
 
+  // ── GET /api/tokens/check-name ──────────────────────────────────────────────
+  // Must be registered before /:mint to avoid Fastify treating "check-name" as a mint
+  app.get('/api/tokens/check-name', async (req, reply) => {
+    const { name } = req.query as { name?: string };
+    if (!name || name.trim().length < 1) {
+      return reply.code(400).send({ error: 'name query param required', code: 'VALIDATION_ERROR' });
+    }
+    const existing = await prisma.token.findFirst({
+      where: { name: { equals: name.trim(), mode: 'insensitive' } },
+      select: { mint: true },
+    });
+    return reply.send({ available: !existing });
+  });
+
+  // ── GET /api/tokens/check-symbol ─────────────────────────────────────────────
+  app.get('/api/tokens/check-symbol', async (req, reply) => {
+    const { symbol } = req.query as { symbol?: string };
+    if (!symbol || symbol.trim().length < 1) {
+      return reply.code(400).send({ error: 'symbol query param required', code: 'VALIDATION_ERROR' });
+    }
+    const existing = await prisma.token.findFirst({
+      where: { symbol: { equals: symbol.trim().toUpperCase(), mode: 'insensitive' } },
+      select: { mint: true },
+    });
+    return reply.send({ available: !existing });
+  });
+
   // ── GET /api/tokens ─────────────────────────────────────────────────────────
   app.get('/api/tokens', async (req, reply) => {
     const q = FeedQuery.safeParse(req.query);

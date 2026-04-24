@@ -12,10 +12,14 @@
  */
 
 import { useCallback, useState } from 'react';
-import { useConnection, useWallet, useAnchorWallet } from '@solana/wallet-adapter-react';
+import { useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { PublicKey, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { getAssociatedTokenAddress } from '@solana/spl-token';
+import {
+  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
 import BN from 'bn.js';
 import {
   getProgram,
@@ -166,6 +170,8 @@ export function useInitializeToken(): UseInitializeTokenReturn {
             creatorAta,
             metadataAccount,
             platformConfig,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
             rent: SYSVAR_RENT_PUBKEY,
           })

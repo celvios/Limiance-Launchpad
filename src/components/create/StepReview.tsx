@@ -28,13 +28,15 @@ export function StepReview() {
 
   // Simulation: trapezoidal integration over the bonding curve
   const simulation = useMemo(() => {
-    const startPrice = calculatePrice(0, formData.curveParams);
-    const halfSupply = Math.floor(formData.totalSupply * 0.5);
-    const gradSupply = Math.floor(
-      formData.totalSupply * formData.graduationThreshold / 100
-    );
-    const halfPrice = calculatePrice(halfSupply, formData.curveParams);
-    const gradPrice = calculatePrice(gradSupply, formData.curveParams);
+    const supply = formData.totalSupply;
+    // Pass totalSupply so toOnChain() can normalize slope correctly
+    const calcP = (s: number) => calculatePrice(s, formData.curveParams, supply);
+
+    const startPrice = calcP(0);
+    const halfSupply  = Math.floor(supply * 0.5);
+    const gradSupply  = Math.floor(supply * formData.graduationThreshold / 100);
+    const halfPrice   = calcP(halfSupply);
+    const gradPrice   = calcP(gradSupply);
 
     // Estimate total raised at graduation using trapezoidal integration
     let totalRaised = 0;
@@ -43,8 +45,8 @@ export function StepReview() {
     for (let i = 0; i < steps; i++) {
       const s1 = i * stepSize;
       const s2 = (i + 1) * stepSize;
-      const p1 = calculatePrice(s1, formData.curveParams);
-      const p2 = calculatePrice(s2, formData.curveParams);
+      const p1 = calcP(s1);
+      const p2 = calcP(s2);
       totalRaised += ((p1 + p2) / 2) * stepSize;
     }
     const platformFee = totalRaised * 0.01;
@@ -337,10 +339,11 @@ function SimRow({ label, value, highlight }: { label: string; value: string; hig
 
 function formatSimPrice(price: number): string {
   if (price === 0) return '0.000000';
-  if (price < 0.000001) return price.toFixed(10);
-  if (price < 0.0001)   return price.toFixed(8);
-  if (price < 0.01)     return price.toFixed(6);
-  if (price < 1)        return price.toFixed(4);
+  if (price < 0.0000001) return price.toFixed(12);
+  if (price < 0.00001)   return price.toFixed(10);
+  if (price < 0.001)     return price.toFixed(7);  // covers 0.0001 range — shows 7 sig-figs
+  if (price < 0.01)      return price.toFixed(5);
+  if (price < 1)         return price.toFixed(4);
   return price.toFixed(2);
 }
 

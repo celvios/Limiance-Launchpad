@@ -330,9 +330,9 @@ function toOnChain(params: CurveParams, supplyCap: number): OnChainCurveParams {
  * Calculate the spot price in SOL at a given supply level.
  * Preserves existing signature used by Pixel's components.
  */
-export function calculatePrice(supply: number, params: CurveParams): number {
-  const onChain = toOnChain(params, 10_000);
-  const lamports = onChainPriceAt(params.type as OnChainCurveType, onChain, BigInt(Math.round(supply)), 10_000n);
+export function calculatePrice(supply: number, params: CurveParams, supplyCap = 10_000): number {
+  const onChain = toOnChain(params, supplyCap);
+  const lamports = onChainPriceAt(params.type as OnChainCurveType, onChain, BigInt(Math.round(supply)), BigInt(supplyCap));
   return Number(lamports) / 1e9;
 }
 
