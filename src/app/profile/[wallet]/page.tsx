@@ -98,18 +98,31 @@ export default function ProfilePage() {
             width: 80,
             height: 80,
             borderRadius: '50%',
-            background: 'var(--bg-elevated)',
+            overflow: 'hidden',
+            background: (profile as any).profilePicUri ? 'transparent' : 'var(--brand)',
             border: '2px solid var(--border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontFamily: 'var(--font-display)',
             fontSize: '28px',
-            color: 'var(--text-muted)',
+            color: '#fff',
             flexShrink: 0,
           }}
         >
-          {(profile.username ?? wallet).slice(0, 2).toUpperCase()}
+          {(profile as any).profilePicUri ? (
+            <img
+              src={
+                (profile as any).profilePicUri.startsWith('ipfs://')
+                  ? `https://gateway.pinata.cloud/ipfs/${(profile as any).profilePicUri.replace('ipfs://', '')}`
+                  : (profile as any).profilePicUri
+              }
+              alt={profile.username ?? 'Avatar'}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            (profile.username ?? wallet).slice(0, 2).toUpperCase()
+          )}
         </div>
 
         {/* Info */}
@@ -292,6 +305,7 @@ export default function ProfilePage() {
           walletAddress={wallet}
           currentUsername={profile.username}
           currentBio={profile.bio}
+          currentProfilePicUri={(profile as any).profilePicUri ?? null}
         />
       )}
     </div>

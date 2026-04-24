@@ -29,7 +29,7 @@ export function useUpdateProfile(walletAddress: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { username: string; bio: string }) => {
+    mutationFn: async (data: { username: string; bio: string; profilePicUri?: string }) => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
       let token = getAuthToken(walletAddress);
       if (!token) token = await loginWithWallet(walletAddress, signMessage);

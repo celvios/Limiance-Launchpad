@@ -283,6 +283,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       }
       if (profilePicUri !== undefined) updateData.profilePicUri = profilePicUri ?? '';
       if (coverUri !== undefined) updateData.coverUri = coverUri ?? '';
+      if (parsed.data.bio !== undefined) updateData.bio = parsed.data.bio;
 
       const updated = await prisma.profile.update({
         where: { walletAddress: wallet },
