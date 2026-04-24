@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useMemo,useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { useUIStore } from '@/store/uiStore';
-import { deployToken } from '@/lib/api';
-import { calculatePrice, calculateBuyPrice } from '@/lib/curve/math';
+import { useInitializeToken } from '@/hooks/useInitializeToken';
+import { calculatePrice } from '@/lib/curve/math';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { formatNumber } from '@/lib/format';
 import { CurvePreviewChart } from './CurvePreviewChart';
 
 /* ── Step 3 — Review & Deploy ── */
@@ -24,7 +23,10 @@ export function StepReview() {
     setDeployResult,
   } = useCreateTokenStore();
 
-  // Simulation: 500 wallets × 100 tokens each = 50,000 tokens
+  // On-chain deploy + backend indexing
+  const { deployToken: initializeToken } = useInitializeToken();
+
+  // Simulation: trapezoidal integration over the bonding curve
   const simulation = useMemo(() => {
     const startPrice = calculatePrice(0, formData.curveParams);
     const halfSupply = Math.floor(formData.totalSupply * 0.5);
@@ -59,7 +61,7 @@ export function StepReview() {
     setDeployState('uploading');
 
     try {
-      // If image wasn't uploaded to IPFS yet, do it now
+      // Upload image to IPFS first if not already done
       if (!formData.imageIpfsUri && formData.imageFile) {
         const { uploadToIPFS } = await import('@/lib/pinata');
         const uri = await uploadToIPFS(formData.imageFile);
@@ -67,11 +69,14 @@ export function StepReview() {
       }
 
       setDeployState('preparing');
-      // Small delay for UX
-      await new Promise((r) => setTimeout(r, 500));
+
+      // Get the latest formData (after potential IPFS update)
+      const latestFormData = useCreateTokenStore.getState().formData;
 
       setDeployState('confirming');
-      const result = await deployToken(formData);
+
+      // On-chain deploy via Anchor + backend indexing via POST /api/tokens
+      const result = await initializeToken(latestFormData);
 
       if (result.success) {
         setDeployResult(result.mint, result.txSignature);
@@ -91,7 +96,7 @@ export function StepReview() {
       // Re-enable button after error
       setTimeout(() => setDeployState('idle'), 2000);
     }
-  }, [connected, openWalletDrawer, formData, setDeployState, setDeployResult, addToast]);
+  }, [connected, openWalletDrawer, formData, setDeployState, setDeployResult, addToast, initializeToken]);
 
   const isDeploying = deployState === 'uploading' || deployState === 'preparing' || deployState === 'confirming';
   const deployButtonText = (() => {
@@ -331,9 +336,11 @@ function SimRow({ label, value, highlight }: { label: string; value: string; hig
 }
 
 function formatSimPrice(price: number): string {
-  if (price < 0.0001) return price.toExponential(2);
-  if (price < 0.01) return price.toFixed(6);
-  if (price < 1) return price.toFixed(4);
+  if (price === 0) return '0.000000';
+  if (price < 0.000001) return price.toFixed(10);
+  if (price < 0.0001)   return price.toFixed(8);
+  if (price < 0.01)     return price.toFixed(6);
+  if (price < 1)        return price.toFixed(4);
   return price.toFixed(2);
 }
 
