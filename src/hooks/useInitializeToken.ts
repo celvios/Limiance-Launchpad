@@ -13,14 +13,13 @@
 
 import { useCallback, useState } from 'react';
 import { useConnection, useAnchorWallet } from '@solana/wallet-adapter-react';
-import { AnchorProvider } from '@coral-xyz/anchor';
-import { PublicKey, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { AnchorProvider, BN } from '@coral-xyz/anchor';
+import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
-import BN from 'bn.js';
 import {
   getProgram,
   deriveMint,
@@ -173,6 +172,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
             rent: SYSVAR_RENT_PUBKEY,
           })
           .rpc({ commitment: 'confirmed' });
