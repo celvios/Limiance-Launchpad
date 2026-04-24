@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '@/lib/constants';
+import { loginWithWallet, getAuthToken } from '@/lib/session';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false';
 const ONBOARDED_KEY = 'limiance-onboarded';
@@ -153,26 +154,21 @@ export function useOnboarding() {
           await delay(1200);
           markWalletOnboarded(walletAddress);
         } else {
-          const timestamp = Date.now();
-          const message = `ACTION:ONBOARD|DATA:${params.username}|TIMESTAMP:${timestamp}`;
-
-          let signatureBase58 = '';
-          if (signMessage) {
-            const sig = await signMessage(new TextEncoder().encode(message));
-            // Convert Uint8Array to base58 using the same method as @solana/web3.js
-            signatureBase58 = Buffer.from(sig).toString('base64');
-          }
+          const token =
+            getAuthToken(walletAddress) ||
+            (signMessage ? await loginWithWallet(walletAddress, signMessage) : null);
 
           const res = await fetch(`${API_BASE_URL}/profiles`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
             body: JSON.stringify({
               walletAddress,
               username: params.username,
               profilePicUri: params.profilePicUri,
               coverUri: params.coverUri,
-              signature: signatureBase58,
-              timestamp,
             }),
           });
 

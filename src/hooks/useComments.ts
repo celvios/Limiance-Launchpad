@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { fetchComments, postComment, upvoteComment } from '@/lib/api';
+import { getAuthToken, loginWithWallet } from '@/lib/session';
 import type { CommentSort, Comment } from '@/lib/types';
 
 export function useComments(mint: string, sort: CommentSort = 'new') {
@@ -22,14 +23,15 @@ export function usePostComment(mint: string) {
 
   return useMutation({
     mutationFn: async ({ text, walletAddress }: { text: string; walletAddress: string }) => {
-      if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+      if (!publicKey) throw new Error('Wallet not connected');
 
-      const timestamp = Date.now();
-      const message = `ACTION:COMMENT|DATA:${text.slice(0, 20)}|TIMESTAMP:${timestamp}`;
-      const sig = await signMessage(new TextEncoder().encode(message));
-      const signature = Buffer.from(sig).toString('base64');
+      // Get the cached JWT — login if not already authenticated (no popup if cached)
+      let token = getAuthToken(walletAddress);
+      if (!token && signMessage) {
+        token = await loginWithWallet(walletAddress, signMessage);
+      }
 
-      return postComment(mint, text, walletAddress, signature, timestamp);
+      return postComment(mint, text, walletAddress, token);
     },
     onSuccess: (newComment: Comment) => {
       queryClient.setQueryData(
@@ -50,14 +52,16 @@ export function useUpvoteComment(mint: string) {
 
   return useMutation({
     mutationFn: async (commentId: string) => {
-      if (!publicKey || !signMessage) throw new Error('Wallet not connected');
+      if (!publicKey) throw new Error('Wallet not connected');
+      const walletAddress = publicKey.toBase58();
 
-      const timestamp = Date.now();
-      const message = `ACTION:UPVOTE|DATA:${commentId}|TIMESTAMP:${timestamp}`;
-      const sig = await signMessage(new TextEncoder().encode(message));
-      const signature = Buffer.from(sig).toString('base64');
+      // Get the cached JWT — login if not already authenticated (no popup if cached)
+      let token = getAuthToken(walletAddress);
+      if (!token && signMessage) {
+        token = await loginWithWallet(walletAddress, signMessage);
+      }
 
-      return upvoteComment(commentId, publicKey.toBase58(), signature, timestamp);
+      return upvoteComment(commentId, walletAddress, token);
     },
     onMutate: async (commentId: string) => {
       await queryClient.cancelQueries({ queryKey: ['comments', mint] });

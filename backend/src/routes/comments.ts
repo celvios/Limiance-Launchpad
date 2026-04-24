@@ -8,7 +8,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
+import { authenticateRequest } from '../lib/jwt';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas
@@ -17,14 +17,10 @@ import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
 const PostCommentBody = z.object({
   walletAddress: z.string().min(32).max(44),
   message: z.string().min(1).max(280),
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 const UpvoteBody = z.object({
   walletAddress: z.string().min(32).max(44),
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,15 +123,12 @@ export async function commentRoutes(fastify: FastifyInstance) {
           .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
       }
 
-      const { walletAddress, message, signature, timestamp } = parsed.data;
+      const { walletAddress, message } = parsed.data;
 
-      if (!isTimestampFresh(timestamp)) {
-        return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-      }
-
-      const msg = `ACTION:COMMENT|DATA:${message.slice(0, 20)}|TIMESTAMP:${timestamp}`;
-      if (!verifyWalletSignature(walletAddress, msg, signature)) {
-        return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+      // JWT authentication — token is sent in Authorization header
+      const authenticatedWallet = authenticateRequest(req.headers.authorization);
+      if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
       // Verify token exists
@@ -149,7 +142,6 @@ export async function commentRoutes(fastify: FastifyInstance) {
           tokenMint: mint,
           walletAddress,
           message,
-          signature,
         },
       });
 
@@ -174,15 +166,12 @@ export async function commentRoutes(fastify: FastifyInstance) {
           .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
       }
 
-      const { walletAddress, signature, timestamp } = parsed.data;
+      const { walletAddress } = parsed.data;
 
-      if (!isTimestampFresh(timestamp)) {
-        return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-      }
-
-      const msg = `ACTION:UPVOTE|DATA:${id}|TIMESTAMP:${timestamp}`;
-      if (!verifyWalletSignature(walletAddress, msg, signature)) {
-        return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+      // JWT authentication — token is sent in Authorization header
+      const authenticatedWallet = authenticateRequest(req.headers.authorization);
+      if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
       const comment = await prisma.comment.findUnique({ where: { id } });

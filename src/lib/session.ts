@@ -1,37 +1,36 @@
 /**
- * Session manager — caches wallet auth so the user signs ONCE per session.
+ * Session manager — SIWS (Sign-In With Solana) JWT session.
  *
- * On first action, `getOrCreateSession` prompts the wallet to sign a
- * "SESSION:..." message. The resulting { signature, timestamp } are stored in
- * localStorage for SESSION_TTL_MS. All subsequent mutations within that window
- * reuse the cached credentials, eliminating repeated pop-ups.
+ * The user signs ONE generic message per session. The backend verifies it
+ * and returns a JWT that is cached in localStorage for 24 hours.
+ * All authenticated API calls send this token as `Authorization: Bearer <token>`
+ * instead of re-signing per-action messages.
  *
- * The backend verifies only that:
- *   1. The signature is valid for the wallet address.
- *   2. The timestamp is within TIMESTAMP_WINDOW_MS of `Date.now()`.
- * Because we refresh the session on every page-load after it expires the
- * timestamp will always be fresh (we store the time the session was created
- * and invalidate locally once TIMESTAMP_WINDOW_MS has elapsed).
+ * Usage:
+ *   const token = await loginWithWallet(walletAddress, signMessage);
+ *   // token is also retrievable cheaply via:
+ *   const token = getAuthToken(walletAddress);  // null if not logged in
  */
 
-const SESSION_TTL_MS = 24 * 60 * 60 * 1_000; // 24 h
+import { API_BASE_URL } from './constants';
 
-interface WalletSession {
+const SESSION_TTL_MS = 24 * 60 * 60 * 1_000; // 24 h (mirrors JWT expiry)
+
+interface StoredSession {
   walletAddress: string;
-  signature: string;   // base64
-  timestamp: number;   // ms since epoch, at signing time
-  expiresAt: number;   // local invalidation timestamp
+  token: string;   // JWT
+  expiresAt: number;
 }
 
 function storageKey(walletAddress: string) {
-  return `limiance:session:${walletAddress}`;
+  return `limiance:jwt:${walletAddress}`;
 }
 
-export function loadSession(walletAddress: string): WalletSession | null {
+function loadStoredSession(walletAddress: string): StoredSession | null {
   try {
     const raw = localStorage.getItem(storageKey(walletAddress));
     if (!raw) return null;
-    const session: WalletSession = JSON.parse(raw);
+    const session: StoredSession = JSON.parse(raw);
     if (Date.now() > session.expiresAt) {
       localStorage.removeItem(storageKey(walletAddress));
       return null;
@@ -42,7 +41,7 @@ export function loadSession(walletAddress: string): WalletSession | null {
   }
 }
 
-export function saveSession(session: WalletSession) {
+function saveStoredSession(session: StoredSession) {
   try {
     localStorage.setItem(storageKey(session.walletAddress), JSON.stringify(session));
   } catch {
@@ -53,38 +52,82 @@ export function saveSession(session: WalletSession) {
 export function clearSession(walletAddress: string) {
   try {
     localStorage.removeItem(storageKey(walletAddress));
+    // Also clear legacy key format from the old session system
+    localStorage.removeItem(`limiance:session:${walletAddress}`);
   } catch {}
 }
 
 /**
- * Returns a { signature, timestamp } pair — either from cache or by prompting
- * the user to sign a fresh session message.
+ * Return the cached JWT for the given wallet, or null if not authenticated.
+ * Does NOT prompt the user — call loginWithWallet() to create a session.
+ */
+export function getAuthToken(walletAddress: string): string | null {
+  return loadStoredSession(walletAddress)?.token ?? null;
+}
+
+/**
+ * Build the login message. Must match backend/src/routes/auth.ts exactly.
+ */
+function buildLoginMessage(timestamp: number): string {
+  return `Limiance Launchpad\n\nSign to authenticate your session.\n\nThis request will not trigger any blockchain transaction or cost any gas.\n\nTimestamp: ${timestamp}`;
+}
+
+/**
+ * Log in with the wallet — prompts signMessage ONCE per session, then caches the JWT.
  *
  * @param walletAddress  Connected wallet public key (base58).
  * @param signMessage    `signMessage` from `useWallet()`.
+ * @returns  JWT string (cached — does not re-prompt if already logged in).
+ */
+export async function loginWithWallet(
+  walletAddress: string,
+  signMessage: (msg: Uint8Array) => Promise<Uint8Array>
+): Promise<string> {
+  // Return cached token if still valid
+  const cached = loadStoredSession(walletAddress);
+  if (cached) return cached.token;
+
+  // Prompt the user — only happens ONCE per session
+  const timestamp = Date.now();
+  const message = buildLoginMessage(timestamp);
+  const encoded = new TextEncoder().encode(message);
+  const sig = await signMessage(encoded);
+  const signature = Buffer.from(sig).toString('base64');
+
+  // Exchange signature for JWT
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ walletAddress, signature, timestamp }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `Login failed: ${res.status}`);
+  }
+
+  const data = await res.json() as { token: string };
+
+  saveStoredSession({
+    walletAddress,
+    token: data.token,
+    expiresAt: timestamp + SESSION_TTL_MS,
+  });
+
+  return data.token;
+}
+
+/**
+ * @deprecated Use loginWithWallet() instead.
+ * Kept for backward compatibility — returns a fake { signature, timestamp } pair
+ * by performing a full JWT login and extracting the token.
  */
 export async function getOrCreateSession(
   walletAddress: string,
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>
 ): Promise<{ signature: string; timestamp: number }> {
-  const cached = loadSession(walletAddress);
-  if (cached) {
-    return { signature: cached.signature, timestamp: cached.timestamp };
-  }
-
-  // Prompt the user — only happens ONCE per session
-  const timestamp = Date.now();
-  const message = `Limiance Launchpad\n\nSign to authenticate your session.\n\nThis request will not trigger any blockchain transaction or cost any gas.\n\nTimestamp: ${timestamp}`;
-  const encoded = new TextEncoder().encode(message);
-  const sig = await signMessage(encoded);
-  const signature = Buffer.from(sig).toString('base64');
-
-  saveSession({
-    walletAddress,
-    signature,
-    timestamp,
-    expiresAt: timestamp + SESSION_TTL_MS,
-  });
-
-  return { signature, timestamp };
+  const token = await loginWithWallet(walletAddress, signMessage);
+  // Return the token as "signature" and 0 as timestamp — callers that used this
+  // old API are being migrated; this shim prevents crashes during transition.
+  return { signature: token, timestamp: 0 };
 }

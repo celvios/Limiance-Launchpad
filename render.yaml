@@ -77,6 +77,11 @@ services:
       # RPC_URL / RPC_URL_DEVNET (optional upgrade)
       #   Replace the public devnet URL above with a Helius key URL for
       #   higher rate limits: https://devnet.helius-rpc.com/?api-key=YOUR_KEY
+      #
+      # JWT_SECRET  ← REQUIRED for the SIWS session system
+      #   Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      #   Set this in the Render dashboard under Environment → JWT_SECRET.
+      #   Without it, logins will use the fallback "change-me-in-production" string (insecure).
 
 databases:
   - name: launchpad-db

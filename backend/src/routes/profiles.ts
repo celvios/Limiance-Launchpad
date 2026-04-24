@@ -17,6 +17,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
 import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
+import { authenticateRequest } from '../lib/jwt';
 import { computeSpotPrice } from '../services/price';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,8 +35,6 @@ const CreateProfileBody = z.object({
     .regex(USERNAME_RE, 'Username may only contain letters, numbers, and underscores'),
   profilePicUri: z.string().nullable().default(null),
   coverUri: z.string().nullable().default(null),
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 const UpdateProfileBody = z.object({
@@ -49,8 +48,6 @@ const UpdateProfileBody = z.object({
   profilePicUri: z.string().nullable().optional(),
   coverUri: z.string().nullable().optional(),
   bio: z.string().max(500).optional(), // accepted but ignored — no bio
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,18 +173,12 @@ export async function profileRoutes(fastify: FastifyInstance) {
           .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
       }
 
-      const { walletAddress, username, profilePicUri, coverUri, signature, timestamp } =
-        parsed.data;
+      const { walletAddress, username, profilePicUri, coverUri } = parsed.data;
 
-      // Timestamp freshness
-      if (!isTimestampFresh(timestamp)) {
-        return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-      }
-
-      // Signature verification
-      const message = `ACTION:ONBOARD|DATA:${username}|TIMESTAMP:${timestamp}`;
-      if (!verifyWalletSignature(walletAddress, message, signature)) {
-        return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+      // JWT authentication
+      const authenticatedWallet = authenticateRequest(req.headers.authorization);
+      if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
       // Username format
@@ -255,21 +246,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
           .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
       }
 
-      const { walletAddress, username, profilePicUri, coverUri, signature, timestamp } =
-        parsed.data;
+      const { walletAddress, username, profilePicUri, coverUri } = parsed.data;
 
       if (walletAddress !== wallet) {
         return reply.code(403).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
-      if (!isTimestampFresh(timestamp)) {
-        return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-      }
-
-      const displayName = username ?? wallet;
-      const message = `ACTION:UPDATE_PROFILE|DATA:${displayName}|TIMESTAMP:${timestamp}`;
-      if (!verifyWalletSignature(walletAddress, message, signature)) {
-        return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+      // JWT authentication
+      const authenticatedWallet = authenticateRequest(req.headers.authorization);
+      if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
       const profile = await prisma.profile.findUnique({ where: { walletAddress: wallet } });

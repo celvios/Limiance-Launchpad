@@ -35,6 +35,22 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Authenticated fetch — attaches Authorization: Bearer <token> header.
+ * Falls back gracefully if no token is provided.
+ */
+async function authFetch(
+  url: string,
+  options: RequestInit,
+  token: string | null
+): Promise<Response> {
+  const headers: HeadersInit = {
+    ...(options.headers as Record<string, string> ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  return fetch(url, { ...options, headers });
+}
+
 /* ── Mock Implementations ── */
 
 function mockFeedTokens(params: FeedQueryParams): TokenListResponse {
@@ -388,8 +404,7 @@ export async function postComment(
   mint: string,
   text: string,
   walletAddress: string,
-  signature: string,
-  timestamp: number
+  token: string | null
 ): Promise<Comment> {
   if (USE_MOCK) {
     await delay(500);
@@ -405,11 +420,15 @@ export async function postComment(
     };
   }
 
-  const res = await fetch(`${API_BASE_URL}/tokens/${mint}/comments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text, walletAddress, signature, timestamp }),
-  });
+  const res = await authFetch(
+    `${API_BASE_URL}/tokens/${mint}/comments`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, walletAddress }),
+    },
+    token
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `API error: ${res.status}`);
@@ -421,19 +440,22 @@ export async function postComment(
 export async function upvoteComment(
   commentId: string,
   walletAddress: string,
-  signature: string,
-  timestamp: number
+  token: string | null
 ): Promise<{ upvotes: number; hasUpvoted: boolean }> {
   if (USE_MOCK) {
     await delay(200);
     return { upvotes: Math.floor(Math.random() * 50) + 1, hasUpvoted: true };
   }
 
-  const res = await fetch(`${API_BASE_URL}/comments/${commentId}/upvote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ walletAddress, signature, timestamp }),
-  });
+  const res = await authFetch(
+    `${API_BASE_URL}/comments/${commentId}/upvote`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress }),
+    },
+    token
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `API error: ${res.status}`);
@@ -455,8 +477,7 @@ export async function fetchProfile(walletAddress: string): Promise<UserProfile> 
 export async function updateProfile(
   walletAddress: string,
   data: { username?: string; bio?: string; profilePicUri?: string; coverUri?: string },
-  signature: string,
-  timestamp: number
+  token: string | null
 ): Promise<UserProfile> {
   if (USE_MOCK) {
     await delay(500);
@@ -464,11 +485,15 @@ export async function updateProfile(
     return { ...profile, username: data.username ?? profile.username, bio: data.bio ?? profile.bio };
   }
 
-  const res = await fetch(`${API_BASE_URL}/profiles/${walletAddress}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...data, walletAddress, signature, timestamp }),
-  });
+  const res = await authFetch(
+    `${API_BASE_URL}/profiles/${walletAddress}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, walletAddress }),
+    },
+    token
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `API error: ${res.status}`);
@@ -480,19 +505,22 @@ export async function updateProfile(
 export async function followUser(
   followerWallet: string,
   followingWallet: string,
-  signature: string,
-  timestamp: number
+  token: string | null
 ): Promise<void> {
   if (USE_MOCK) {
     await delay(300);
     return;
   }
 
-  const res = await fetch(`${API_BASE_URL}/follows`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ followerWallet, followingWallet, signature, timestamp }),
-  });
+  const res = await authFetch(
+    `${API_BASE_URL}/follows`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followerWallet, followingWallet }),
+    },
+    token
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `API error: ${res.status}`);
@@ -502,19 +530,22 @@ export async function followUser(
 export async function unfollowUser(
   followerWallet: string,
   followingWallet: string,
-  signature: string,
-  timestamp: number
+  token: string | null
 ): Promise<void> {
   if (USE_MOCK) {
     await delay(300);
     return;
   }
 
-  const res = await fetch(`${API_BASE_URL}/follows`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ followerWallet, followingWallet, signature, timestamp }),
-  });
+  const res = await authFetch(
+    `${API_BASE_URL}/follows`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followerWallet, followingWallet }),
+    },
+    token
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `API error: ${res.status}`);

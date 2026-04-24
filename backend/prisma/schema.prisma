@@ -83,7 +83,7 @@ model Comment {
   tokenMint     String
   walletAddress String
   message       String   @db.Text
-  signature     String   // ed25519 signature of (tokenMint + message + timestamp)
+  signature     String?  // ed25519 signature (legacy) — now superseded by JWT auth
   upvotes       Int      @default(0)
   createdAt     DateTime @default(now())
 

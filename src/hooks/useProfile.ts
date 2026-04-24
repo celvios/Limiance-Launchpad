@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { getOrCreateSession } from '@/lib/session';
+import { getAuthToken, loginWithWallet } from '@/lib/session';
 import {
   fetchProfile,
   updateProfile,
@@ -31,8 +31,9 @@ export function useUpdateProfile(walletAddress: string) {
   return useMutation({
     mutationFn: async (data: { username: string; bio: string }) => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
-      const { signature, timestamp } = await getOrCreateSession(walletAddress, signMessage);
-      return updateProfile(walletAddress, data, signature, timestamp);
+      let token = getAuthToken(walletAddress);
+      if (!token) token = await loginWithWallet(walletAddress, signMessage);
+      return updateProfile(walletAddress, data, token);
     },
     onSuccess: (updatedProfile: UserProfile) => {
       queryClient.setQueryData(['profile', walletAddress], updatedProfile);
@@ -48,8 +49,9 @@ export function useFollowUser(walletAddress: string) {
     mutationFn: async () => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
       const followerWallet = publicKey.toBase58();
-      const { signature, timestamp } = await getOrCreateSession(followerWallet, signMessage);
-      return followUser(followerWallet, walletAddress, signature, timestamp);
+      let token = getAuthToken(followerWallet);
+      if (!token) token = await loginWithWallet(followerWallet, signMessage);
+      return followUser(followerWallet, walletAddress, token);
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['profile', walletAddress] });
@@ -79,8 +81,9 @@ export function useUnfollowUser(walletAddress: string) {
     mutationFn: async () => {
       if (!publicKey || !signMessage) throw new Error('Wallet not connected');
       const followerWallet = publicKey.toBase58();
-      const { signature, timestamp } = await getOrCreateSession(followerWallet, signMessage);
-      return unfollowUser(followerWallet, walletAddress, signature, timestamp);
+      let token = getAuthToken(followerWallet);
+      if (!token) token = await loginWithWallet(followerWallet, signMessage);
+      return unfollowUser(followerWallet, walletAddress, token);
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['profile', walletAddress] });

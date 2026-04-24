@@ -6,6 +6,7 @@ import multipart from '@fastify/multipart';
 import fastifyWebsocket from '@fastify/websocket';
 
 import { tokenRoutes } from './routes/tokens';
+import { authRoutes } from './routes/auth';
 import { uploadRoutes } from './routes/upload';
 import { webhookRoutes } from './routes/webhook';
 import { activityRoutes } from './routes/activity';
@@ -52,6 +53,7 @@ async function main() {
 
   // ── Routes ───────────────────────────────────────────────────────────────────
 
+  await app.register(authRoutes);
   await app.register(tokenRoutes);
   await app.register(uploadRoutes);
   await app.register(webhookRoutes);

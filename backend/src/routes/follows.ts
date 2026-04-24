@@ -10,7 +10,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
+import { authenticateRequest } from '../lib/jwt';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas
@@ -19,15 +19,11 @@ import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
 const FollowBody = z.object({
   followerWallet: z.string().min(32).max(44),
   followingWallet: z.string().min(32).max(44),
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 const WatchlistBody = z.object({
   walletAddress: z.string().min(32).max(44),
   tokenMint: z.string().min(32).max(44),
-  signature: z.string().min(1),
-  timestamp: z.number().int().positive(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,19 +41,15 @@ export async function followRoutes(fastify: FastifyInstance) {
         .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
     }
 
-    const { followerWallet, followingWallet, signature, timestamp } = parsed.data;
+    const { followerWallet, followingWallet } = parsed.data;
 
     if (followerWallet === followingWallet) {
       return reply.code(400).send({ error: 'Cannot follow yourself', code: 'INVALID_FOLLOW' });
     }
 
-    if (!isTimestampFresh(timestamp)) {
-      return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-    }
-
-    const message = `ACTION:FOLLOW|DATA:${followingWallet}|TIMESTAMP:${timestamp}`;
-    if (!verifyWalletSignature(followerWallet, message, signature)) {
-      return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+    const authenticatedWallet = authenticateRequest(req.headers.authorization);
+    if (!authenticatedWallet || authenticatedWallet !== followerWallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
 
     await prisma.follow.upsert({
@@ -81,15 +73,11 @@ export async function followRoutes(fastify: FastifyInstance) {
         .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
     }
 
-    const { followerWallet, followingWallet, signature, timestamp } = parsed.data;
+    const { followerWallet, followingWallet } = parsed.data;
 
-    if (!isTimestampFresh(timestamp)) {
-      return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-    }
-
-    const message = `ACTION:UNFOLLOW|DATA:${followingWallet}|TIMESTAMP:${timestamp}`;
-    if (!verifyWalletSignature(followerWallet, message, signature)) {
-      return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+    const authenticatedWallet = authenticateRequest(req.headers.authorization);
+    if (!authenticatedWallet || authenticatedWallet !== followerWallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
 
     await prisma.follow
@@ -129,15 +117,11 @@ export async function followRoutes(fastify: FastifyInstance) {
         .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
     }
 
-    const { walletAddress, tokenMint, signature, timestamp } = parsed.data;
+    const { walletAddress, tokenMint } = parsed.data;
 
-    if (!isTimestampFresh(timestamp)) {
-      return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-    }
-
-    const message = `ACTION:WATCH|DATA:${tokenMint}|TIMESTAMP:${timestamp}`;
-    if (!verifyWalletSignature(walletAddress, message, signature)) {
-      return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+    const authenticatedWallet = authenticateRequest(req.headers.authorization);
+    if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
 
     // Verify token exists
@@ -165,15 +149,11 @@ export async function followRoutes(fastify: FastifyInstance) {
         .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
     }
 
-    const { walletAddress, tokenMint, signature, timestamp } = parsed.data;
+    const { walletAddress, tokenMint } = parsed.data;
 
-    if (!isTimestampFresh(timestamp)) {
-      return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
-    }
-
-    const message = `ACTION:UNWATCH|DATA:${tokenMint}|TIMESTAMP:${timestamp}`;
-    if (!verifyWalletSignature(walletAddress, message, signature)) {
-      return reply.code(400).send({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' });
+    const authenticatedWallet = authenticateRequest(req.headers.authorization);
+    if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
 
     await prisma.watchlist
