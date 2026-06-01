@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { Search, X } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useUIStore } from '@/store/uiStore';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
 

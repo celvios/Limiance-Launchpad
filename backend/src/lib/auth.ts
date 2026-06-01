@@ -1,48 +1,46 @@
-/**
- * Wallet signature verification for authenticated endpoints.
- *
- * All authenticated actions require a signed message in this format:
- *   ACTION:[type]|DATA:[relevant_data]|TIMESTAMP:[unix_ms]
- *
- * Signatures are base64-encoded (Buffer.from(sig).toString('base64')).
- * Public keys are base58-encoded Solana wallet addresses.
- */
-import nacl from 'tweetnacl';
-import bs58 from 'bs58';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { keccak_256 } from '@noble/hashes/sha3';
+import { concatBytes, hexToBytes, utf8ToBytes } from '@noble/hashes/utils';
 
-/**
- * Verify an ed25519 wallet signature.
- *
- * @param walletAddress  Base58 Solana public key
- * @param message        Plain-text message that was signed
- * @param signatureB64   Base64-encoded ed25519 signature
- * @returns true if the signature is valid, false otherwise
- */
-export function verifyWalletSignature(
-  walletAddress: string,
-  message: string,
-  signatureB64: string
-): boolean {
+export function isEvmAddress(value: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function normalizeSignature(signature: string): { compact: Uint8Array; recovery: number } | null {
+  if (!/^0x[a-fA-F0-9]{130}$/.test(signature)) return null;
+  const bytes = hexToBytes(signature.slice(2));
+  const recoveryRaw = bytes[64];
+  const recovery = recoveryRaw >= 27 ? recoveryRaw - 27 : recoveryRaw;
+  if (recovery !== 0 && recovery !== 1) return null;
+  return {
+    compact: bytes.slice(0, 64),
+    recovery,
+  };
+}
+
+function ethereumMessageHash(message: string): Uint8Array {
+  const messageBytes = utf8ToBytes(message);
+  const prefix = utf8ToBytes(`\x19Ethereum Signed Message:\n${messageBytes.length}`);
+  return keccak_256(concatBytes(prefix, messageBytes));
+}
+
+export function recoverEvmAddress(message: string, signature: string): string | null {
   try {
-    const messageBytes = new TextEncoder().encode(message);
-    const signatureBytes = Uint8Array.from(Buffer.from(signatureB64, 'base64'));
-    const publicKeyBytes = bs58.decode(walletAddress);
-    return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
+    const normalized = normalizeSignature(signature);
+    if (!normalized) return null;
+    const recovered = (secp256k1 as any).recoverPublicKey(
+      new Uint8Array([normalized.recovery, ...normalized.compact]),
+      ethereumMessageHash(message),
+    );
+    const uncompressed = recovered.length === 65 ? recovered.slice(1) : recovered;
+    const address = keccak_256(uncompressed).slice(-20);
+    return `0x${Buffer.from(address).toString('hex')}`;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/**
- * Check that a client-supplied timestamp is within the acceptable window.
- * Rejects stale or future-dated requests to prevent replay attacks.
- *
- * @param timestamp  Unix milliseconds from the client
- * @param maxAgeMs   Maximum age allowed (default: 5 minutes)
- */
-export function isTimestampFresh(
-  timestamp: number,
-  maxAgeMs: number = 5 * 60 * 1000
-): boolean {
-  return Math.abs(Date.now() - timestamp) <= maxAgeMs;
+export function verifyEvmPersonalSignature(walletAddress: string, message: string, signature: string): boolean {
+  const recovered = recoverEvmAddress(message, signature);
+  return Boolean(recovered && recovered.toLowerCase() === walletAddress.toLowerCase());
 }

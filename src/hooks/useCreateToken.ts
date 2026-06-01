@@ -7,9 +7,7 @@ import { create } from 'zustand';
 import type { CreateTokenFormData, CreateTokenStep, CreateTokenValidation, CurveType, CurveParams } from '@/lib/types';
 
 const DEFAULT_CURVE_PARAMS: Record<CurveType, CurveParams> = {
-  linear: { type: 'linear', a: 0.0001, b: 0.000005 },
-  exponential: { type: 'exponential', a: 0.00001, r: 0.0008 },
-  sigmoid: { type: 'sigmoid', maxPrice: 0.1, k: 0.002, s0: 5000 },
+  sigmoid: { type: 'sigmoid', pMin: 0.00001, pMax: 0.1, k: 0.002, midpoint: 5000 },
 };
 
 interface CreateTokenStore {
@@ -54,8 +52,8 @@ const INITIAL_FORM_DATA: CreateTokenFormData = {
   description: '',
   totalSupply: 100000,
   creatorAllocation: 0,
-  curveType: 'linear',
-  curveParams: { ...DEFAULT_CURVE_PARAMS.linear },
+  curveType: 'sigmoid',
+  curveParams: { ...DEFAULT_CURVE_PARAMS.sigmoid },
   graduationThreshold: 80,
 };
 

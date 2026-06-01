@@ -339,7 +339,7 @@ export async function deployToken(
     for (let i = 0; i < 88; i++) {
       txSig += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return { success: true, mint, txSignature: txSig };
+    return { success: true, tokenAddress: mint, mint, txSignature: txSig };
   }
 
   const res = await fetch(`${API_BASE_URL}/tokens/deploy`, {

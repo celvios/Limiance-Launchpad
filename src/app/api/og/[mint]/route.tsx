@@ -104,7 +104,7 @@ export async function GET(
               }}
             >
               <div style={{ fontSize: 48, color: '#FFFFFF', fontWeight: 600 }}>
-                {priceStr} SOL
+                {priceStr} USDT
               </div>
               <div
                 style={{
@@ -142,14 +142,14 @@ export async function GET(
             <div style={{ fontSize: 24, color: '#666666' }}>
               {supplyPercent}% to graduation ·{' '}
               {token.status === 'graduated'
-                ? 'Graduated to Raydium'
+                ? 'Graduated to PancakeSwap'
                 : `${token.currentSupply.toLocaleString()} / ${token.graduationThreshold.toLocaleString()}`}
             </div>
           </div>
 
           {/* Bottom branding */}
           <div style={{ fontSize: 20, color: '#444444', letterSpacing: 2 }}>
-            LAUNCH · Built on Solana
+            LAUNCH · Built on BSC
           </div>
         </div>
       </div>
@@ -160,3 +160,4 @@ export async function GET(
     }
   );
 }
+

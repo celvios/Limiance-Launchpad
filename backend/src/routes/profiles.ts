@@ -16,7 +16,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { verifyWalletSignature, isTimestampFresh } from '../lib/auth';
 import { authenticateRequest } from '../lib/jwt';
 import { computeSpotPrice } from '../services/price';
 
@@ -368,7 +367,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const tokens = await prisma.token.findMany({ where: { mint: { in: mints } } });
       const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
 
-      const LAMPORTS_PER_SOL = 1_000_000_000n;
+      const PAYMENT_UNIT = 1_000_000_000_000_000_000n;
       const TOKEN_DECIMALS = 1_000_000n;
 
       const holdings = netHoldings
@@ -385,29 +384,29 @@ export async function profileRoutes(fastify: FastifyInstance) {
             BigInt(token.supplyCap.toString())
           );
 
-          const avgBuyLamports =
+          const avgBuyWei =
             h.buyAmount > BigInt(0)
               ? Number((h.solSpent * TOKEN_DECIMALS) / h.buyAmount)
               : 0;
 
-          const currentLamports = Number(currentPrice);
+          const currentWei = Number(currentPrice);
           const pnlPercent =
-            avgBuyLamports > 0
-              ? ((currentLamports - avgBuyLamports) / avgBuyLamports) * 100
+            avgBuyWei > 0
+              ? ((currentWei - avgBuyWei) / avgBuyWei) * 100
               : 0;
 
-          const valueLamports = (h.net * BigInt(currentLamports)) / TOKEN_DECIMALS;
-          const valueSol = Number(valueLamports) / Number(LAMPORTS_PER_SOL);
+          const valueWei = (h.net * BigInt(currentWei)) / TOKEN_DECIMALS;
+          const valuePayment = Number(valueWei) / Number(PAYMENT_UNIT);
 
           return {
             mint: token.mint,
             symbol: token.symbol,
             name: token.name,
             amount: Number(h.net) / Number(TOKEN_DECIMALS),
-            avgBuyPrice: avgBuyLamports / Number(LAMPORTS_PER_SOL),
-            currentPrice: currentLamports / Number(LAMPORTS_PER_SOL),
+            avgBuyPrice: avgBuyWei / Number(PAYMENT_UNIT),
+            currentPrice: currentWei / Number(PAYMENT_UNIT),
             pnlPercent: Math.round(pnlPercent * 100) / 100,
-            value: Math.round(valueSol * 1e6) / 1e6,
+            value: Math.round(valuePayment * 1e6) / 1e6,
           };
         })
         .filter((h): h is NonNullable<typeof h> => h !== null);
@@ -539,3 +538,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
     }
   );
 }
+
+
+

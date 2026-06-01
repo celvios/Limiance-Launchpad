@@ -116,7 +116,7 @@ function FeaturedCard({ token }: { token: TokenCardData }) {
               color: 'var(--text-primary)',
             }}
           >
-            {formatPrice(token.price)} SOL
+            {formatPrice(token.price)} USDT
           </span>
           <span
             style={{
@@ -216,3 +216,4 @@ export function FeaturedRow() {
     </div>
   );
 }
+

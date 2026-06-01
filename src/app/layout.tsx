@@ -7,8 +7,8 @@ export const metadata: Metadata = {
     default: "Limiance — Feed",
     template: "Limiance — %s",
   },
-  description: "Launch, trade, and discover tokens on Solana. The most trusted launchpad with bonding curves and automatic Raydium graduation.",
-  keywords: ["solana", "token", "launchpad", "bonding curve", "raydium", "defi", "limiance", "launch"],
+  description: "Launch, trade, and discover tokens on BSC with sigmoid bonding curves, generated deposit addresses, and PancakeSwap graduation.",
+  keywords: ["bsc", "bnb", "token", "launchpad", "bonding curve", "pancakeswap", "defi", "limiance", "launch"],
 };
 
 export default function RootLayout({

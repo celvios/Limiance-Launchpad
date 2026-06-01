@@ -240,7 +240,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
                 marginTop: '2px',
               }}
             >
-              {formatPrice(price)} SOL
+              {formatPrice(price)} USDT
             </div>
           </div>
 
@@ -304,7 +304,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
                 marginTop: '2px',
               }}
             >
-              {formatMarketCap(marketCap)} SOL
+              {formatMarketCap(marketCap)} USDT
             </div>
           </div>
         </div>
@@ -345,7 +345,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
             }}
           >
             {isGraduated
-              ? '✓ Graduated to Raydium'
+              ? '✓ Graduated to PancakeSwap'
               : `${supplyPercent.toFixed(0)}% — ${formatNumber(remaining, 0)} to graduation`}
           </div>
         </div>
@@ -423,7 +423,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
               }}
             >
               <ExternalLink size={14} />
-              Raydium
+              PancakeSwap
             </span>
           )}
         </div>
@@ -431,3 +431,4 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     </Link>
   );
 });
+

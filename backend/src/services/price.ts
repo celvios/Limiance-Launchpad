@@ -4,7 +4,7 @@
  */
 import { prisma } from './prisma';
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const PAYMENT_UNIT = 1_000_000_000_000_000_000n;
 const SCALE = 1_000_000n;
 
 function linearPriceAt(a: bigint, b: bigint, supply: bigint): bigint {
@@ -17,7 +17,7 @@ function expPriceAt(a: bigint, r: bigint, supply: bigint): bigint {
 }
 
 /**
- * Compute the current spot price in lamports for a given token.
+ * Compute the current spot price in wei for a given token.
  */
 export function computeSpotPrice(
   curveType: string,
@@ -76,7 +76,7 @@ export function calcPriceChange24h(currentPrice: bigint, price24h: bigint): numb
 }
 
 /**
- * Calculate market cap in lamports: price × currentSupply.
+ * Calculate market cap in wei: price × currentSupply.
  */
 export function calcMarketCap(pricePerToken: bigint, currentSupply: bigint): bigint {
   // currentSupply is in 6-decimal token units
@@ -95,11 +95,11 @@ export async function getSparkline(mint: string): Promise<number[]> {
     ORDER BY DATE_TRUNC('day', "timestamp") DESC, "timestamp" DESC
     LIMIT 7
   `;
-  return trades.map((t) => Number(t.price) / Number(LAMPORTS_PER_SOL));
+  return trades.map((t) => Number(t.price) / Number(PAYMENT_UNIT));
 }
 
 /**
- * Compute 24h trading volume in lamports.
+ * Compute 24h trading volume in wei.
  */
 export async function getVolume24h(mint: string): Promise<bigint> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -112,3 +112,6 @@ export async function getVolume24h(mint: string): Promise<bigint> {
   });
   return result._sum.solAmount ? BigInt(result._sum.solAmount.toString()) : 0n;
 }
+
+
+

@@ -333,7 +333,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
             : currentPrice < 1
             ? currentPrice.toFixed(4)
             : currentPrice.toFixed(2)}{' '}
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>SOL</span>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>USDT</span>
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
@@ -396,3 +396,4 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     </div>
   );
 }
+

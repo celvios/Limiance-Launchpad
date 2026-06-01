@@ -6,7 +6,7 @@ import { useUIStore } from '@/store/uiStore';
 import { MenuHeader } from './MenuHeader';
 import { MenuNavLinks } from './MenuNavLinks';
 import { MenuWalletCard } from './MenuWalletCard';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 
 export function MenuDrawer() {
   const { isMobileMenuOpen, setMobileMenuOpen } = useUIStore();

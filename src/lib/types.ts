@@ -4,10 +4,11 @@
  * Only the fetch functions in api.ts need to change.
  */
 
-export type CurveType = 'linear' | 'exponential' | 'sigmoid';
+export type CurveType = 'sigmoid';
 export type TokenStatus = 'active' | 'graduated';
 
 export interface TokenCardData {
+  tokenAddress?: string;
   mint: string;
   symbol: string;
   name: string;
@@ -17,16 +18,16 @@ export interface TokenCardData {
   creatorHandle: string;
   createdAt: number; // unix ms
   curveType: CurveType;
-  price: number; // SOL
+  price: number; // USDT
   priceChange24h: number; // percentage, e.g. 142 = +142%
-  marketCap: number; // SOL
+  marketCap: number; // USDT
   sparklineData: number[]; // 7 data points
   currentSupply: number;
   graduationThreshold: number;
   commentCount: number;
   status: TokenStatus;
   holderCount: number;
-  volume24h: number; // SOL
+  volume24h: number; // USDT
 }
 
 /* Paginated response shape — matches what the real API will return */
@@ -62,19 +63,21 @@ export interface TokenDetail extends TokenCardData {
   totalSupply: number;
   basePrice: number;
   curveParams: CurveParams;
-  platformFee: number; // percentage, e.g. 1 = 1%
-  totalRaised: number; // SOL
-  raydiumPoolAddress: string | null; // set after graduation
+  platformFee: number; // percentage, e.g. 3 = 3%
+  totalRaised: number; // USDT
+  dexPoolAddress: string | null; // set after graduation
 }
 
 export interface CurveParams {
   type: CurveType;
-  // Linear: price = a + b * supply
+  pMin?: number;
+  pMax?: number;
+  midpoint?: number;
+  // Legacy aliases kept temporarily for existing components during migration.
   a?: number;
   b?: number;
-  // Exponential: price = a * e^(r * supply)
+  c?: number;
   r?: number;
-  // Sigmoid: price = maxPrice / (1 + e^(-k * (supply - s0)))
   maxPrice?: number;
   k?: number;
   s0?: number;
@@ -86,7 +89,8 @@ export interface TradeActivity {
   walletAddress: string;
   walletHandle: string | null;
   tokenAmount: number;
-  solAmount: number;
+  paymentAmount?: number;
+  solAmount: number; // legacy alias for payment amount
   txSignature: string;
   timestamp: number;
   isWhale: boolean;
@@ -134,8 +138,41 @@ export interface CreateTokenValidation {
 
 export interface DeployResult {
   success: boolean;
+  tokenAddress: string;
+  saleAddress?: string;
   mint: string;
   txSignature: string;
+}
+
+export interface DepositAddress {
+  userId?: string | null;
+  userWallet: string;
+  chainId: number;
+  asset: string;
+  vaultAddress: string;
+  status: 'active' | 'disabled';
+  createdAt: number;
+}
+
+export interface Deposit {
+  id: string;
+  vaultAddress: string;
+  userWallet: string;
+  asset: string;
+  amount: string;
+  txHash: string;
+  confirmations: number;
+  credited: boolean;
+  consumed: boolean;
+  createdAt: number;
+}
+
+export interface UserBalance {
+  userId?: string | null;
+  walletAddress: string;
+  asset: string;
+  available: string;
+  consumed: string;
 }
 
 /* ── Phase 5: Social Layer ── */
@@ -180,7 +217,7 @@ export interface HoldingData {
   avgBuyPrice: number;
   currentPrice: number;
   pnlPercent: number;
-  value: number; // SOL
+  value: number; // USDT
 }
 
 export interface ProfileHoldingsResponse {
@@ -195,3 +232,5 @@ export interface ProfileTradesResponse {
 export interface ProfileCommentsResponse {
   comments: (Comment & { tokenSymbol: string })[];
 }
+
+

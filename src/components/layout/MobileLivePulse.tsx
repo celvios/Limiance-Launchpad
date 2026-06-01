@@ -26,7 +26,7 @@ export function MobileLivePulse() {
   if (!latestTrade) return null;
 
   const shortAddress = `${latestTrade.walletAddress.slice(0, 4)}...${latestTrade.walletAddress.slice(-2)}`;
-  const textString = `@${shortAddress} ${latestTrade.type} ${latestTrade.solAmount} SOL of $${latestTrade.tokenSymbol} · ${formatTimeAgo(latestTrade.timestamp)}`;
+  const textString = `@${shortAddress} ${latestTrade.type} ${latestTrade.solAmount} USDT of $${latestTrade.tokenSymbol} · ${formatTimeAgo(latestTrade.timestamp)}`;
 
   return (
     <div
@@ -104,3 +104,4 @@ export function MobileLivePulse() {
     </div>
   );
 }
+

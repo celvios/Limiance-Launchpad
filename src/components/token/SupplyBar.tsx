@@ -81,9 +81,10 @@ export function SupplyBar({ currentSupply, graduationThreshold, isGraduated }: S
         }}
       >
         {isGraduated
-          ? '✓ Graduated to Raydium'
-          : `${percent.toFixed(0)}% · ${formatNumber(remaining, 0)} tokens to Raydium graduation`}
+          ? '✓ Graduated to PancakeSwap'
+          : `${percent.toFixed(0)}% · ${formatNumber(remaining, 0)} tokens to PancakeSwap graduation`}
       </div>
     </div>
   );
 }
+

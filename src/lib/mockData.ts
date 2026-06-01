@@ -23,7 +23,7 @@ export const MOCK_TOKENS: TokenCardData[] = [
     creatorWallet: '4f2a8b1c9d3e7f6a5b0c2d4e6f8a1b3c5d7e9f0a1b2c',
     creatorHandle: 'pepelord',
     createdAt: NOW - 3 * DAY,
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.000042,
     priceChange24h: 142.5,
     marketCap: 42000,
@@ -61,11 +61,11 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'FROG',
     name: 'Frog Finance',
     imageUri: '/tokens/frog.png',
-    description: 'Hop into DeFi. A ribbit-ing new approach to decentralized finance on Solana.',
+    description: 'Hop into DeFi. A ribbit-ing new approach to decentralized finance on BSC.',
     creatorWallet: 'b8c1e7d3f2a5b9c4d6e0f1a7b3c8d2e5f9a0b4c6d1e3',
     creatorHandle: 'ribbitdev',
     createdAt: NOW - 30 * 60_000, // 30 min ago — NEW token
-    curveType: 'linear',
+    curveType: 'sigmoid',
     price: 0.0001,
     priceChange24h: 0,
     marketCap: 100,
@@ -82,11 +82,11 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'BONK',
     name: 'Bonk Token',
     imageUri: '/tokens/bonk.png',
-    description: 'The dog coin of Solana. Bonk first, ask questions later. Community owned and operated.',
+    description: 'The dog coin of BSC. Bonk first, ask questions later. Community owned and operated.',
     creatorWallet: '9d4e2f5a8c1b7d3e6f0a4b9c5d2e8f1a3b7c0d6e4f5a',
     creatorHandle: 'bonkmaster',
     createdAt: NOW - 14 * DAY,
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.00842,
     priceChange24h: 23.7,
     marketCap: 168400,
@@ -103,7 +103,7 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'GRAD',
     name: 'The Graduate',
     imageUri: '/tokens/grad.png',
-    description: 'First token to graduate on the platform. Now trading on Raydium. A piece of history.',
+    description: 'First token to graduate on the platform. Now trading on PancakeSwap. A piece of history.',
     creatorWallet: 'c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5',
     creatorHandle: 'pioneer',
     createdAt: NOW - 21 * DAY,
@@ -145,11 +145,11 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'WHALE',
     name: 'Whale Watch',
     imageUri: '/tokens/whale.png',
-    description: 'Track the whales, ride the waves. Community analytics token for Solana DeFi.',
+    description: 'Track the whales, ride the waves. Community analytics token for BSC DeFi.',
     creatorWallet: 'e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3',
     creatorHandle: 'whalewatcher',
     createdAt: NOW - 2 * DAY,
-    curveType: 'linear',
+    curveType: 'sigmoid',
     price: 0.00034,
     priceChange24h: -15.2,
     marketCap: 3400,
@@ -170,7 +170,7 @@ export const MOCK_TOKENS: TokenCardData[] = [
     creatorWallet: 'f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7',
     creatorHandle: 'degenlord',
     createdAt: NOW - 1 * DAY,
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.00789,
     priceChange24h: 234.1,
     marketCap: 78900,
@@ -184,14 +184,14 @@ export const MOCK_TOKENS: TokenCardData[] = [
   },
   {
     mint: '1kQu4wZ6cH8dF0jL2nP4rT6vX8zA0dF2hJ4lN6pR8tV',
-    symbol: 'SOL69',
-    name: 'Solana Sixty Nine',
-    imageUri: '/tokens/sol69.png',
-    description: 'The nicest number on Solana. Community vibes token. No utility, just good energy.',
+    symbol: 'USDT69',
+    name: 'BSC Sixty Nine',
+    imageUri: '/tokens/USDT69.png',
+    description: 'The nicest number on BSC. Community vibes token. No utility, just good energy.',
     creatorWallet: 'a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1',
     creatorHandle: 'nice420',
     createdAt: NOW - 45 * 60_000, // 45 min ago — NEW
-    curveType: 'linear',
+    curveType: 'sigmoid',
     price: 0.00005,
     priceChange24h: 12.0,
     marketCap: 50,
@@ -229,11 +229,11 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'NEAR',
     name: 'Near Graduation',
     imageUri: '/tokens/near.png',
-    description: 'Almost there! This token is on the verge of graduating to Raydium. Final push!',
+    description: 'Almost there! This token is on the verge of graduating to PancakeSwap. Final push!',
     creatorWallet: 'c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9',
     creatorHandle: 'almostthere',
     createdAt: NOW - 12 * DAY,
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.0398,
     priceChange24h: 18.9,
     marketCap: 398000,
@@ -248,13 +248,13 @@ export const MOCK_TOKENS: TokenCardData[] = [
   {
     mint: '4nTx7zC9fK1gI3mO5qS7uW9yA1dF3hJ5lN7pR9tV1xZ',
     symbol: 'CATS',
-    name: 'CatCoin Solana',
+    name: 'CatCoin BSC',
     imageUri: '/tokens/cats.png',
-    description: 'Cats rule the internet. Now they rule Solana too. Meow money, meow problems.',
+    description: 'Cats rule the internet. Now they rule BSC too. Meow money, meow problems.',
     creatorWallet: 'd1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3',
     creatorHandle: 'catperson',
     createdAt: NOW - 4 * DAY,
-    curveType: 'linear',
+    curveType: 'sigmoid',
     price: 0.00092,
     priceChange24h: 45.3,
     marketCap: 9200,
@@ -275,7 +275,7 @@ export const MOCK_TOKENS: TokenCardData[] = [
     creatorWallet: 'e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7',
     creatorHandle: 'goodvibes',
     createdAt: NOW - 6 * DAY,
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.00267,
     priceChange24h: 12.8,
     marketCap: 26700,
@@ -296,7 +296,7 @@ export const MOCK_TOKENS: TokenCardData[] = [
     creatorWallet: 'f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1',
     creatorHandle: 'gigachad',
     createdAt: NOW - 20 * 60_000, // 20 min ago — NEW
-    curveType: 'exponential',
+    curveType: 'sigmoid',
     price: 0.00008,
     priceChange24h: 0,
     marketCap: 80,
@@ -313,11 +313,11 @@ export const MOCK_TOKENS: TokenCardData[] = [
     symbol: 'GRAIL',
     name: 'Holy Grail',
     imageUri: '/tokens/grail.png',
-    description: 'The holy grail of Solana tokens. Graduated and thriving on Raydium DEX.',
+    description: 'The holy grail of BSC tokens. Graduated and thriving on PancakeSwap DEX.',
     creatorWallet: 'a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5',
     creatorHandle: 'grailseeker',
     createdAt: NOW - 30 * DAY,
-    curveType: 'linear',
+    curveType: 'sigmoid',
     price: 0.0891,
     priceChange24h: 2.1,
     marketCap: 891000,
@@ -343,8 +343,8 @@ export const FEATURED_MINTS = [
 /* ── Phase 3 Mock Data ── */
 
 const CURVE_PARAMS_MAP: Record<string, CurveParams> = {
-  linear: { type: 'linear', a: 0.0001, b: 0.000005 },
-  exponential: { type: 'exponential', a: 0.00001, r: 0.0008 },
+  linear: { type: 'sigmoid', a: 0.0001, b: 0.000005 },
+  exponential: { type: 'sigmoid', a: 0.00001, r: 0.0008 },
   sigmoid: { type: 'sigmoid', maxPrice: 0.1, k: 0.002, s0: 5000 },
 };
 
@@ -356,9 +356,9 @@ export function getTokenDetail(card: TokenCardData): TokenDetail {
     totalSupply: card.graduationThreshold,
     basePrice: card.sparklineData[0] ?? 0.0001,
     curveParams: CURVE_PARAMS_MAP[card.curveType] ?? CURVE_PARAMS_MAP.linear,
-    platformFee: 1,
+    platformFee: 3,
     totalRaised: card.marketCap * 0.15,
-    raydiumPoolAddress:
+    dexPoolAddress:
       card.status === 'graduated'
         ? 'RAY' + card.mint.slice(0, 30) + 'pool'
         : null,
@@ -533,7 +533,7 @@ export function getMockProfile(walletAddress: string): UserProfile {
     walletAddress,
     username: wallet?.handle ?? null,
     bio: wallet?.handle
-      ? `Building on Solana. Creator of ${createdTokens.length} token${createdTokens.length !== 1 ? 's' : ''}.`
+      ? `Building on BSC. Creator of ${createdTokens.length} token${createdTokens.length !== 1 ? 's' : ''}.`
       : null,
     joinedAt: NOW - (42 + walletAddress.charCodeAt(0)) * DAY,
     tokensCreated: createdTokens.length,
@@ -626,4 +626,8 @@ export function getMockProfileComments(
 
   return results;
 }
+
+
+
+
 

@@ -91,7 +91,7 @@ export function TokenPageClient() {
             isGraduated={isGraduated}
             isNearGrad={isNearGrad}
             supplyPercent={supplyPercent}
-            raydiumPoolAddress={token.raydiumPoolAddress}
+            dexPoolAddress={token.dexPoolAddress}
           />
 
           <PriceChart mint={mint} currentPrice={token.price} />
@@ -165,8 +165,8 @@ export function TokenPageClient() {
                 { label: 'Curve Type', value: token.curveType.toUpperCase() },
                 { label: 'Total Supply', value: `${(token.totalSupply / 1000).toFixed(0)}K` },
                 { label: 'Holders', value: token.holderCount.toLocaleString() },
-                { label: '24h Volume', value: `${token.volume24h.toLocaleString()} SOL` },
-                { label: 'Total Raised', value: `${token.totalRaised.toFixed(1)} SOL` },
+                { label: '24h Volume', value: `${token.volume24h.toLocaleString()} USDT` },
+                { label: 'Total Raised', value: `${token.totalRaised.toFixed(1)} USDT` },
                 { label: 'Platform Fee', value: `${token.platformFee}%` },
               ].map((item) => (
                 <div key={item.label}>
@@ -220,7 +220,7 @@ export function TokenPageClient() {
                     detail: {
                       tokenMint: mint,
                       tokenSymbol: token.symbol,
-                      raydiumPoolAddress: token.raydiumPoolAddress ?? 'devtest',
+                      dexPoolAddress: token.dexPoolAddress ?? 'devtest',
                       timestamp: Date.now(),
                     },
                   })
@@ -298,3 +298,5 @@ function TokenPageSkeleton() {
     </div>
   );
 }
+
+

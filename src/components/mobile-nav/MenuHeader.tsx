@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useConnection } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { useWallet } from '@/providers/BscWalletProvider';
+import { useConnection } from '@/providers/BscWalletProvider';
 import { Copy, ExternalLink, User } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { formatAddress } from '@/lib/format';
@@ -12,35 +11,35 @@ import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
 
 export function MenuHeader() {
-  const { connected, publicKey } = useWallet();
+  const { connected, address } = useWallet();
   const { connection } = useConnection();
   const { addToast } = useUIStore();
 
   const { data: balance } = useQuery({
-    queryKey: ['sol-balance', publicKey?.toBase58()],
+    queryKey: ['bnb-balance', address],
     queryFn: async () => {
-      if (!publicKey) return 0;
-      const lamports = await connection.getBalance(publicKey);
-      return lamports / LAMPORTS_PER_SOL;
+      if (!address) return 0;
+      const wei = await connection.getBalance(address);
+      return wei / 1e18;
     },
-    enabled: !!publicKey,
+    enabled: !!address,
     refetchInterval: 15000,
   });
 
   const handleCopy = () => {
-    if (publicKey) {
-      navigator.clipboard.writeText(publicKey.toBase58());
+    if (address) {
+      navigator.clipboard.writeText(address);
       addToast({ type: 'success', message: 'Address copied to clipboard' });
     }
   };
 
   const handleSolscan = () => {
-    if (publicKey) {
-      window.open(`https://solscan.io/account/${publicKey.toBase58()}`, '_blank');
+    if (address) {
+      window.open(`https://testnet.bscscan.com/address/${address}`, '_blank');
     }
   };
 
-  if (!connected || !publicKey) {
+  if (!connected || !address) {
     return (
       <div
         style={{
@@ -115,7 +114,7 @@ export function MenuHeader() {
               color: '#FFFFFF',
             }}
           >
-            @user_{publicKey.toBase58().slice(0, 4).toLowerCase()}
+            @user_{address.slice(0, 4).toLowerCase()}
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -126,7 +125,7 @@ export function MenuHeader() {
                 color: 'var(--text-muted)',
               }}
             >
-              {formatAddress(publicKey.toBase58())}
+              {formatAddress(address)}
             </span>
             <span
               style={{
@@ -136,7 +135,7 @@ export function MenuHeader() {
                 color: 'var(--buy)',
               }}
             >
-              {balance !== undefined ? `${balance.toFixed(2)} SOL` : '— SOL'}
+              {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
             </span>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -175,3 +174,7 @@ export function MenuHeader() {
     </div>
   );
 }
+
+
+
+

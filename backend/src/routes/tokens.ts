@@ -1,341 +1,180 @@
-/**
- * Token API routes.
- *
- * POST /api/tokens      — Index a token after on-chain deploy
- * GET  /api/tokens      — Feed / explore with filters and cursor pagination
- * GET  /api/tokens/:mint — Full token detail
- */
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { fetchTokenConfig, decodeCurveType, decodeStatus } from '../services/rpc';
-import {
-  computeSpotPrice,
-  calcMarketCap,
-  calcPriceChange24h,
-  getPrice24hAgo,
-  getSparkline,
-  getVolume24h,
-} from '../services/price';
-import { cacheGet, cacheSet } from '../services/redis';
+import { BSC_CHAIN_ID, normalizeAddress } from '../services/bsc';
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Zod schemas
-// ─────────────────────────────────────────────────────────────────────────────
-
-const IndexTokenBody = z.object({
-  mint: z.string().min(32).max(44),
-  txSignature: z.string().min(64).max(90),
+const DeployBody = z.object({
+  creator: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  name: z.string().min(1).max(32),
+  symbol: z.string().min(1).max(10),
   description: z.string().max(500).default(''),
+  imageUri: z.string().default(''),
+  totalSupply: z.number().int().positive(),
+  creatorAllocation: z.number().min(0).max(10),
+  graduationThreshold: z.number().min(40).max(100),
+  curveParams: z.object({
+    pMin: z.number().optional(),
+    pMax: z.number().optional(),
+    k: z.number().optional(),
+    midpoint: z.number().optional(),
+  }).passthrough(),
 });
 
 const FeedQuery = z.object({
-  filter: z
-    .enum(['new', 'trending', 'near_grad', 'graduated', 'following'])
-    .default('new'),
-  tags: z.string().optional(), // comma-separated curve types
+  filter: z.enum(['new', 'trending', 'near_grad', 'graduated', 'following']).default('new'),
   cursor: z.string().optional(),
   limit: z.coerce.number().min(1).max(50).default(20),
-  wallet: z.string().optional(), // required for "following" filter
+  wallet: z.string().optional(),
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: serialize BigInt fields for JSON response
-// ─────────────────────────────────────────────────────────────────────────────
-function bigintToStr(v: bigint): string {
-  return v.toString();
+function pseudoAddress(seed: string): string {
+  let hash = 0n;
+  for (const char of seed) {
+    hash = (hash * 33n + BigInt(char.charCodeAt(0))) & ((1n << 160n) - 1n);
+  }
+  return `0x${hash.toString(16).padStart(40, '0')}`;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: build TokenListItem from DB token + computed price fields
-// ─────────────────────────────────────────────────────────────────────────────
-async function buildTokenListItem(token: any) {
-  const priceA = BigInt(token.curveParamA.toString());
-  const priceB = BigInt(token.curveParamB.toString());
-  const priceC = BigInt(token.curveParamC.toString());
+function toWei(value: number): bigint {
+  return BigInt(Math.round(value * 1e18));
+}
+
+function serializeToken(token: any) {
+  const tokenAddress = token.tokenAddress ?? token.mint;
   const supply = BigInt(token.currentSupply.toString());
   const cap = BigInt(token.supplyCap.toString());
-
-  const spotPrice = computeSpotPrice(token.curveType, priceA, priceB, priceC, supply, cap);
-  const price24h = await getPrice24hAgo(token.mint);
-  const priceChange24h = calcPriceChange24h(spotPrice, price24h);
-  const marketCap = calcMarketCap(spotPrice, supply);
-  const volume24h = await getVolume24h(token.mint);
-  const sparkline = await getSparkline(token.mint);
-
-  const commentCount = await prisma.comment.count({ where: { tokenMint: token.mint } });
-
-  // Resolve creator handle
-  const profile = await prisma.profile.findUnique({
-    where: { walletAddress: token.creator },
-    select: { username: true },
-  });
+  const price = BigInt(token.curveParamA.toString());
+  const marketCap = cap > 0n ? (price * supply) / 1_000_000_000_000_000_000n : 0n;
 
   return {
-    mint: token.mint,
+    tokenAddress,
+    mint: tokenAddress,
     symbol: token.symbol,
     name: token.name,
     imageUri: token.uri,
     description: token.description,
     creatorWallet: token.creator,
-    creatorHandle: profile?.username ?? null,
-    createdAt: token.createdAt.toISOString(),
-    curveType: token.curveType,
-    currentSupply: bigintToStr(supply),
-    supplyCap: bigintToStr(cap),
-    graduationThreshold: bigintToStr(BigInt(token.graduationThreshold.toString())),
+    creatorHandle: null,
+    createdAt: token.createdAt.getTime(),
+    curveType: 'sigmoid',
+    curveParams: {
+      type: 'sigmoid',
+      pMin: Number(token.curveParamB) / 1e18,
+      pMax: Number(token.curveParamA) / 1e18,
+      k: Number(token.curveParamC) / 1e6,
+      midpoint: Number(token.graduationThreshold),
+    },
+    currentSupply: Number(supply),
+    supplyCap: Number(cap),
+    graduationThreshold: Number(token.graduationThreshold),
     status: token.status,
-    price: bigintToStr(spotPrice),
-    priceChange24h,
-    marketCap: bigintToStr(marketCap),
-    commentCount,
-    sparklineData: sparkline,
-    volume24h: bigintToStr(volume24h),
+    price: Number(price) / 1e18,
+    priceChange24h: 0,
+    marketCap: Number(marketCap) / 1e18,
+    commentCount: 0,
+    sparklineData: [],
+    volume24h: 0,
+    holderCount: 0,
+    totalSupply: Number(cap),
+    basePrice: Number(token.curveParamB) / 1e18,
+    platformFee: 3,
+    totalRaised: 0,
+    dexPoolAddress: token.dexPoolAddress ?? null,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Route registration
-// ─────────────────────────────────────────────────────────────────────────────
-
 export async function tokenRoutes(app: FastifyInstance) {
-  // ── POST /api/tokens ────────────────────────────────────────────────────────
-  app.post('/api/tokens', async (req, reply) => {
-    const body = IndexTokenBody.safeParse(req.body);
-    if (!body.success) {
-      return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' });
+  app.post('/api/tokens/deploy', async (req, reply) => {
+    const parsed = DeployBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
     }
 
-    const { mint, txSignature, description } = body.data;
-
-    // Check if already indexed
-    const existing = await prisma.token.findUnique({ where: { mint } });
-    if (existing) {
-      return reply.send({ token: existing });
-    }
-
-    // Fetch from chain
-    const onChain = await fetchTokenConfig(mint);
-    if (!onChain) {
-      return reply.code(400).send({ error: 'Token not found on-chain', code: 'TOKEN_NOT_FOUND' });
-    }
-
-    const curveType = decodeCurveType(onChain.curveType);
+    const body = parsed.data;
+    const creator = normalizeAddress(body.creator);
+    const tokenAddress = pseudoAddress(`${creator}:${body.symbol}:${Date.now()}`);
+    const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
+    const supplyCap = BigInt(body.totalSupply) * 1_000_000_000_000_000_000n;
+    const graduationThreshold = (supplyCap * BigInt(body.graduationThreshold)) / 100n;
 
     const token = await prisma.token.create({
       data: {
-        mint,
-        creator: onChain.creator.toBase58(),
-        name: onChain.name,
-        symbol: onChain.symbol,
-        uri: onChain.uri,
-        description,
-        supplyCap: onChain.supplyCap,
-        currentSupply: onChain.currentSupply,
-        graduationThreshold: onChain.graduationThreshold,
-        creatorAllocation: onChain.creatorAllocation,
-        curveType,
-        curveParamA: onChain.curveParams.paramA,
-        curveParamB: onChain.curveParams.paramB,
-        curveParamC: onChain.curveParams.paramC,
+        mint: tokenAddress,
+        tokenAddress,
+        saleAddress,
+        chainId: BSC_CHAIN_ID,
+        creator,
+        name: body.name,
+        symbol: body.symbol.toUpperCase(),
+        uri: body.imageUri,
+        description: body.description,
+        supplyCap,
+        currentSupply: 0n,
+        graduationThreshold,
+        creatorAllocation: body.creatorAllocation,
+        curveType: 'sigmoid',
+        curveParamA: toWei(body.curveParams.pMax ?? 0.1),
+        curveParamB: toWei(body.curveParams.pMin ?? 0.00001),
+        curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
         status: 'active',
       },
     });
 
-    return reply.code(200).send({ token });
+    return reply.code(201).send({
+      success: true,
+      tokenAddress,
+      saleAddress,
+      mint: tokenAddress,
+      txSignature: `pending:${token.id}`,
+    });
   });
 
-  // ── GET /api/tokens/check-name ──────────────────────────────────────────────
-  // Must be registered before /:mint to avoid Fastify treating "check-name" as a mint
   app.get('/api/tokens/check-name', async (req, reply) => {
     const { name } = req.query as { name?: string };
-    if (!name || name.trim().length < 1) {
-      return reply.code(400).send({ error: 'name query param required', code: 'VALIDATION_ERROR' });
-    }
-    const existing = await prisma.token.findFirst({
-      where: { name: { equals: name.trim(), mode: 'insensitive' } },
-      select: { mint: true },
-    });
+    const existing = name
+      ? await prisma.token.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } })
+      : null;
     return reply.send({ available: !existing });
   });
 
-  // ── GET /api/tokens/check-symbol ─────────────────────────────────────────────
   app.get('/api/tokens/check-symbol', async (req, reply) => {
     const { symbol } = req.query as { symbol?: string };
-    if (!symbol || symbol.trim().length < 1) {
-      return reply.code(400).send({ error: 'symbol query param required', code: 'VALIDATION_ERROR' });
-    }
-    const existing = await prisma.token.findFirst({
-      where: { symbol: { equals: symbol.trim().toUpperCase(), mode: 'insensitive' } },
-      select: { mint: true },
-    });
+    const existing = symbol
+      ? await prisma.token.findFirst({ where: { symbol: { equals: symbol, mode: 'insensitive' } } })
+      : null;
     return reply.send({ available: !existing });
   });
 
-  // ── GET /api/tokens ─────────────────────────────────────────────────────────
   app.get('/api/tokens', async (req, reply) => {
-    const q = FeedQuery.safeParse(req.query);
-    if (!q.success) {
-      return reply.code(400).send({ error: q.error.message, code: 'VALIDATION_ERROR' });
+    const parsed = FeedQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
     }
 
-    const { filter, tags, cursor, limit, wallet } = q.data;
-
-    // Build WHERE clause
     const where: any = {};
-
-    switch (filter) {
-      case 'graduated':
-        where.status = 'graduated';
-        break;
-      case 'near_grad':
-        where.status = 'active';
-        // Filter in-memory after fetch (requires supply comparison — SQL fallback)
-        break;
-      case 'following':
-        if (!wallet) {
-          return reply.code(400).send({ error: 'wallet required for following filter', code: 'WALLET_REQUIRED' });
-        }
-        const follows = await prisma.follow.findMany({
-          where: { followerWallet: wallet },
-          select: { followingWallet: true },
-        });
-        where.creator = { in: follows.map((f: any) => f.followingWallet) };
-        where.status = 'active';
-        break;
-      case 'new':
-        where.status = 'active';
-        break;
-      case 'trending':
-      default:
-        where.status = 'active';
-        break;
-    }
-
-    // Tag filters
-    if (tags) {
-      const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
-      const curveFilters = tagList.filter((t) => ['linear', 'exponential', 'sigmoid'].includes(t));
-      if (curveFilters.length > 0) {
-        where.curveType = { in: curveFilters };
-      }
-    }
-
-    // Cursor pagination
-    if (cursor) {
-      where.createdAt = { lt: new Date(cursor) };
-    }
-
-    // ORDER BY
-    let orderBy: any = { createdAt: 'desc' };
-    if (filter === 'trending') {
-      // Trending: most trades in last 24h — handled via join; use updatedAt as proxy for now
-      orderBy = { updatedAt: 'desc' };
-    }
+    if (parsed.data.filter === 'graduated') where.status = 'graduated';
+    else where.status = 'active';
+    if (parsed.data.cursor) where.createdAt = { lt: new Date(parsed.data.cursor) };
 
     const tokens = await prisma.token.findMany({
       where,
-      orderBy,
-      take: limit + 1, // fetch one extra to determine if there's a next page
+      orderBy: { createdAt: 'desc' },
+      take: parsed.data.limit + 1,
     });
-
-    const hasMore = tokens.length > limit;
-    const page = hasMore ? tokens.slice(0, limit) : tokens;
-
-    // For near_grad: filter where currentSupply > 75% of graduationThreshold
-    const filtered =
-      filter === 'near_grad'
-        ? page.filter((t: any) => {
-            const supply = BigInt(t.currentSupply.toString());
-            const threshold = BigInt(t.graduationThreshold.toString());
-            return threshold > 0n && supply * 100n / threshold > 75n;
-          })
-        : page;
-
-    // Build list items (parallelized per token)
-    const items = await Promise.all(filtered.map(buildTokenListItem));
-
-    const nextCursor =
-      hasMore && page.length > 0
-        ? page[page.length - 1].createdAt.toISOString()
-        : null;
-
-    return reply.send({ tokens: items, nextCursor });
+    const page = tokens.slice(0, parsed.data.limit);
+    const nextCursor = tokens.length > parsed.data.limit ? page[page.length - 1]?.createdAt.toISOString() : null;
+    return reply.send({ tokens: page.map(serializeToken), nextCursor, total: page.length });
   });
 
-  // ── GET /api/tokens/:mint ───────────────────────────────────────────────────
-  app.get('/api/tokens/:mint', async (req, reply) => {
-    const { mint } = req.params as { mint: string };
-    if (!mint || mint.length < 32) {
-      return reply.code(400).send({ error: 'Invalid mint address', code: 'INVALID_MINT' });
-    }
-
-    // Cache check (5s TTL)
-    const cacheKey = `token:${mint}`;
-    const cached = await cacheGet(cacheKey);
-    if (cached) return reply.send(cached);
-
-    const token = await prisma.token.findUnique({ where: { mint } });
-    if (!token) {
-      return reply.code(404).send({ error: 'Token not found', code: 'NOT_FOUND' });
-    }
-
-    const priceA = BigInt(token.curveParamA.toString());
-    const priceB = BigInt(token.curveParamB.toString());
-    const priceC = BigInt(token.curveParamC.toString());
-    const supply = BigInt(token.currentSupply.toString());
-    const cap = BigInt(token.supplyCap.toString());
-
-    const spotPrice = computeSpotPrice(token.curveType, priceA, priceB, priceC, supply, cap);
-    const price24h = await getPrice24hAgo(mint);
-    const priceChange24h = calcPriceChange24h(spotPrice, price24h);
-    const marketCap = calcMarketCap(spotPrice, supply);
-    const volume24h = await getVolume24h(mint);
-
-    const [tradeCount, holderSet, profile] = await Promise.all([
-      prisma.trade.count({ where: { tokenMint: mint } }),
-      prisma.trade.findMany({
-        where: { tokenMint: mint },
-        distinct: ['walletAddress'],
-        select: { walletAddress: true },
-      }),
-      prisma.profile.findUnique({
-        where: { walletAddress: token.creator },
-        select: { username: true },
-      }),
-    ]);
-
-    const result = {
-      mint: token.mint,
-      symbol: token.symbol,
-      name: token.name,
-      imageUri: token.uri,
-      description: token.description,
-      curveType: token.curveType,
-      curveParams: {
-        a: bigintToStr(priceA),
-        b: bigintToStr(priceB),
-        c: bigintToStr(priceC),
-      },
-      supplyCap: bigintToStr(cap),
-      currentSupply: bigintToStr(supply),
-      graduationThreshold: bigintToStr(BigInt(token.graduationThreshold.toString())),
-      status: token.status,
-      raydiumPoolId: token.raydiumPoolId ?? null,
-      creatorWallet: token.creator,
-      creatorHandle: profile?.username ?? null,
-      createdAt: token.createdAt.toISOString(),
-      holderCount: holderSet.length,
-      tradeCount,
-      price: bigintToStr(spotPrice),
-      priceChange24h,
-      volume24h: bigintToStr(volume24h),
-      marketCap: bigintToStr(marketCap),
-    };
-
-    await cacheSet(cacheKey, result, 5);
-    return reply.send(result);
+  app.get('/api/tokens/:address', async (req, reply) => {
+    const { address } = req.params as { address: string };
+    const tokenAddress = address.toLowerCase();
+    const token = await prisma.token.findFirst({
+      where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+    });
+    if (!token) return reply.code(404).send({ error: 'Token not found', code: 'NOT_FOUND' });
+    return reply.send(serializeToken(token));
   });
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { useUIStore } from '@/store/uiStore';
 import { useInitializeToken } from '@/hooks/useInitializeToken';
@@ -9,6 +9,7 @@ import { calculatePrice } from '@/lib/curve/math';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CurvePreviewChart } from './CurvePreviewChart';
+import { TOKEN_CREATION_FEE_USDT } from '@/lib/constants';
 
 /* ── Step 3 — Review & Deploy ── */
 
@@ -49,7 +50,7 @@ export function StepReview() {
       const p2 = calcP(s2);
       totalRaised += ((p1 + p2) / 2) * stepSize;
     }
-    const platformFee = totalRaised * 0.01;
+    const platformFee = totalRaised * 0.03;
 
     return { startPrice, halfPrice, gradPrice, totalRaised, platformFee };
   }, [formData]);
@@ -77,11 +78,10 @@ export function StepReview() {
 
       setDeployState('confirming');
 
-      // On-chain deploy via Anchor + backend indexing via POST /api/tokens
       const result = await initializeToken(latestFormData);
 
       if (result.success) {
-        setDeployResult(result.mint, result.txSignature);
+        setDeployResult(result.tokenAddress, result.txSignature);
         addToast({
           type: 'success',
           message: `🎉 ${formData.symbol} launched successfully!`,
@@ -203,6 +203,9 @@ export function StepReview() {
             <DetailRow label="Graduation At">
               {formData.graduationThreshold}% ({Math.floor(formData.totalSupply * formData.graduationThreshold / 100).toLocaleString()} tokens)
             </DetailRow>
+            <DetailRow label="Creation Fee">
+              {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT
+            </DetailRow>
             {formData.description && (
               <div>
                 <div style={detailLabelStyle}>Description</div>
@@ -243,12 +246,12 @@ export function StepReview() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <SimRow label="Starting price" value={`${formatSimPrice(simulation.startPrice)} SOL`} />
-            <SimRow label="Price at 50% supply" value={`${formatSimPrice(simulation.halfPrice)} SOL`} />
-            <SimRow label="Price at graduation" value={`${formatSimPrice(simulation.gradPrice)} SOL`} />
+            <SimRow label="Starting price" value={`${formatSimPrice(simulation.startPrice)} USDT`} />
+            <SimRow label="Price at 50% supply" value={`${formatSimPrice(simulation.halfPrice)} USDT`} />
+            <SimRow label="Price at graduation" value={`${formatSimPrice(simulation.gradPrice)} USDT`} />
             <div style={{ borderTop: '1px solid var(--border)', margin: 'var(--space-1) 0' }} />
-            <SimRow label="Est. total raised" value={`${simulation.totalRaised.toFixed(2)} SOL`} highlight />
-            <SimRow label="Platform fee (1%)" value={`${simulation.platformFee.toFixed(4)} SOL`} />
+            <SimRow label="Est. total raised" value={`${simulation.totalRaised.toFixed(2)} USDT`} highlight />
+            <SimRow label="Platform fee (3%)" value={`${simulation.platformFee.toFixed(4)} USDT`} />
           </div>
         </div>
       </div>
@@ -269,7 +272,7 @@ export function StepReview() {
           color: 'var(--text-muted)',
         }}
       >
-        Estimated deployment cost: ~0.05 SOL
+        Creation fee: {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT + BSC gas
       </div>
 
       {/* Deploy Button */}

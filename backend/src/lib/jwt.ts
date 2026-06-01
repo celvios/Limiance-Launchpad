@@ -1,5 +1,5 @@
 /**
- * JWT helpers for the SIWS (Sign-In With Solana) session system.
+ * JWT helpers for the EVM signed-message session system.
  *
  * Tokens are issued on POST /api/auth/login and must be sent as
  *   Authorization: Bearer <token>
@@ -12,6 +12,9 @@ const JWT_EXPIRY = '24h';
 
 export interface SessionPayload {
   wallet: string;
+  userId?: string;
+  email?: string;
+  authType?: 'wallet' | 'email';
   iat?: number;
   exp?: number;
 }
@@ -19,8 +22,8 @@ export interface SessionPayload {
 /**
  * Issue a signed JWT for the given wallet address.
  */
-export function signToken(wallet: string): string {
-  return jwt.sign({ wallet } satisfies Omit<SessionPayload, 'iat' | 'exp'>, JWT_SECRET, {
+export function signToken(wallet: string, extra: Omit<SessionPayload, 'wallet' | 'iat' | 'exp'> = {}): string {
+  return jwt.sign({ wallet, ...extra } satisfies Omit<SessionPayload, 'iat' | 'exp'>, JWT_SECRET, {
     expiresIn: JWT_EXPIRY,
   });
 }
@@ -56,3 +59,11 @@ export function authenticateRequest(authHeader: string | undefined): string | nu
   const payload = verifyToken(token);
   return payload?.wallet ?? null;
 }
+
+export function authenticateSession(authHeader: string | undefined): SessionPayload | null {
+  const token = extractBearer(authHeader);
+  if (!token) return null;
+  return verifyToken(token);
+}
+
+

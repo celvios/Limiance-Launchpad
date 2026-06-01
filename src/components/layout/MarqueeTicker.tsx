@@ -35,7 +35,7 @@ export function MarqueeTicker() {
   // Fallback items when no real data
   const displayItems = items.length > 0 ? items : [
     { id: '1', type: 'new' as const, symbol: 'LAUNCH', creator: 'Limiance' },
-    { id: '2', type: 'new' as const, symbol: 'SOL', creator: 'solana' },
+    { id: '2', type: 'new' as const, symbol: 'USDT', creator: 'BSC' },
     { id: '3', type: 'grad' as const, symbol: 'MOON', creator: 'trader1' },
     { id: '4', type: 'new' as const, symbol: 'ALPHA', creator: 'builder' },
     { id: '5', type: 'grad' as const, symbol: 'BETA', creator: 'dev' },
@@ -95,7 +95,7 @@ export function MarqueeTicker() {
               </span>
               {item.type === 'new'
                 ? ` just launched by @${item.creator}`
-                : ` graduated to Raydium`}
+                : ` graduated to PancakeSwap`}
             </span>
 
             {/* Separator dot */}
@@ -113,3 +113,4 @@ export function MarqueeTicker() {
     </div>
   );
 }
+

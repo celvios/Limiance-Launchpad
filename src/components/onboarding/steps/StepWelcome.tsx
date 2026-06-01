@@ -63,7 +63,7 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
         >
           The social token launchpad
           <br />
-          on Solana.
+          on BSC.
         </p>
       </div>
 
@@ -85,7 +85,7 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
         >
           Create tokens. Trade early.
           <br />
-          Watch them go to Raydium.
+          Watch them go to PancakeSwap.
         </p>
       </div>
 
@@ -102,3 +102,4 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
     </div>
   );
 }
+

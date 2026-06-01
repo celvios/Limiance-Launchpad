@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useUIStore } from '@/store/uiStore';
 import { useOnboardingStore } from '@/store/onboardingStore';

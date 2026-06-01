@@ -14,6 +14,9 @@ datasource db {
 model Token {
   id                  String    @id @default(cuid())
   mint                String    @unique
+  tokenAddress        String?   @unique
+  saleAddress         String?
+  chainId             Int       @default(97)
   creator             String
   name                String
   symbol              String
@@ -27,14 +30,14 @@ model Token {
   creatorAllocation   Int
 
   // Curve configuration
-  curveType           String    // "linear" | "exponential" | "sigmoid"
+  curveType           String    // "sigmoid"
   curveParamA         BigInt
   curveParamB         BigInt
   curveParamC         BigInt
 
   // Lifecycle
   status              String    @default("active")  // "active" | "graduated" | "cancelled"
-  raydiumPoolId       String?   // populated after graduation
+  dexPoolAddress      String?
 
   // Timestamps
   createdAt           DateTime  @default(now())
@@ -48,20 +51,25 @@ model Token {
   @@index([createdAt])
   @@index([creator])
   @@index([symbol])
+  @@index([tokenAddress])
+  @@index([chainId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Trade events — indexed from Helius webhooks
+// Trade events indexed from BSC contract events
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Trade {
   id            String   @id @default(cuid())
   tokenMint     String
+  tokenAddress  String?
   walletAddress String
   type          String   // "buy" | "sell"
   amount        BigInt   // token amount (smallest unit, 6 decimals)
-  solAmount     BigInt   // lamports
-  pricePerToken BigInt   // lamports per token
+  solAmount     BigInt   // legacy payment amount
+  paymentAmount BigInt?
+  paymentAsset  String   @default("0x0000000000000000000000000000000000000000")
+  pricePerToken BigInt   // wei per token
   txSignature   String   @unique
   timestamp     DateTime
   isWhale       Boolean  @default(false)
@@ -72,6 +80,124 @@ model Trade {
   @@index([walletAddress])
   @@index([timestamp])
   @@index([tokenMint, timestamp])
+  @@index([tokenAddress])
+}
+
+model User {
+  id                    String   @id @default(cuid())
+  email                 String?  @unique
+  emailVerifiedAt       DateTime?
+  primaryWalletAddress  String?  @unique
+  embeddedSignerAddress String?
+  smartAccountAddress   String?
+  authType              String   @default("wallet")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  wallets          WalletIdentity[]
+  emailIdentities  EmailIdentity[]
+  depositAddresses DepositAddress[]
+  balances         UserBalance[]
+
+  @@index([email])
+  @@index([primaryWalletAddress])
+}
+
+model WalletIdentity {
+  id            String   @id @default(cuid())
+  userId        String
+  walletAddress String   @unique
+  walletType    String   @default("external")
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model EmailIdentity {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String   @unique
+  provider  String   @default("email_otp")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model LoginOtp {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, consumed])
+}
+
+model DepositAddress {
+  id               String   @id @default(cuid())
+  userId           String?
+  userWallet       String
+  chainId          Int
+  asset            String
+  vaultAddress     String   @unique
+  status           String   @default("active")
+  lastScannedBlock BigInt   @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  deposits Deposit[]
+  user     User?     @relation(fields: [userId], references: [id])
+
+  @@unique([userWallet, chainId, asset])
+  @@unique([userId, chainId, asset])
+  @@index([userWallet])
+  @@index([userId])
+  @@index([chainId, asset])
+}
+
+model Deposit {
+  id               String   @id @default(cuid())
+  depositAddressId String
+  vaultAddress     String
+  userWallet       String
+  chainId          Int
+  asset            String
+  amount           BigInt
+  txHash           String
+  logIndex         Int      @default(0)
+  confirmations    Int      @default(0)
+  credited         Boolean  @default(false)
+  consumed         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  depositAddress DepositAddress @relation(fields: [depositAddressId], references: [id])
+
+  @@unique([txHash, logIndex])
+  @@index([userWallet, asset])
+  @@index([vaultAddress])
+  @@index([credited, consumed])
+}
+
+model UserBalance {
+  id            String   @id @default(cuid())
+  userId        String?
+  walletAddress String
+  chainId       Int
+  asset         String
+  available     BigInt   @default(0)
+  consumed      BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@unique([walletAddress, chainId, asset])
+  @@unique([userId, chainId, asset])
+  @@index([walletAddress])
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,3 +281,6 @@ model CommentUpvote {
   @@unique([commentId, walletAddress])
   @@index([commentId])
 }
+
+
+

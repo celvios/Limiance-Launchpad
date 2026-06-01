@@ -4,9 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Compass, Plus, User } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useConnection } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { useWallet } from '@/providers/BscWalletProvider';
+import { useConnection } from '@/providers/BscWalletProvider';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
@@ -22,17 +21,17 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { publicKey, connected } = useWallet();
+  const { address, connected } = useWallet();
   const { connection } = useConnection();
 
   const { data: balance } = useQuery({
-    queryKey: ['sol-balance', publicKey?.toBase58()],
+    queryKey: ['bnb-balance', address],
     queryFn: async () => {
-      if (!publicKey) return 0;
-      const lamports = await connection.getBalance(publicKey);
-      return lamports / LAMPORTS_PER_SOL;
+      if (!address) return 0;
+      const wei = await connection.getBalance(address);
+      return wei / 1e18;
     },
-    enabled: !!publicKey,
+    enabled: !!address,
     refetchInterval: 15000,
   });
 
@@ -43,7 +42,7 @@ export function Sidebar() {
     {
       icon: <User size={20} />,
       label: 'Profile',
-      href: connected && publicKey ? `/profile/${publicKey.toBase58()}` : '/profile',
+      href: connected && address ? `/profile/${address}` : '/profile',
     },
   ];
 
@@ -152,7 +151,7 @@ export function Sidebar() {
             paddingTop: 'var(--space-4)',
           }}
         >
-          {connected && publicKey ? (
+          {connected && address ? (
             <div
               style={{
                 display: 'flex',
@@ -189,7 +188,7 @@ export function Sidebar() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {formatAddress(publicKey.toBase58())}
+                  {formatAddress(address)}
                 </div>
                 <div
                   style={{
@@ -198,7 +197,7 @@ export function Sidebar() {
                     color: 'var(--text-muted)',
                   }}
                 >
-                  {balance !== undefined ? `${balance.toFixed(2)} SOL` : '— SOL'}
+                  {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
                 </div>
               </div>
             </div>
@@ -210,3 +209,6 @@ export function Sidebar() {
     </>
   );
 }
+
+
+

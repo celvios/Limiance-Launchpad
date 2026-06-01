@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { Tabs } from '@/components/ui/Tabs';
 import { CommentItem } from '@/components/social/CommentItem';
 import { useComments, usePostComment, useUpvoteComment } from '@/hooks/useComments';
@@ -19,16 +19,16 @@ interface CommentSectionProps {
 export function CommentSection({ mint }: CommentSectionProps) {
   const [sort, setSort] = useState<CommentSort>('new');
   const [text, setText] = useState('');
-  const { publicKey, connected } = useWallet();
+  const { address, connected } = useWallet();
 
   const { data, isLoading, isError } = useComments(mint, sort);
   const postMutation = usePostComment(mint);
   const upvoteMutation = useUpvoteComment(mint);
 
   const handlePost = () => {
-    if (!text.trim() || !publicKey) return;
+    if (!text.trim() || !address) return;
     postMutation.mutate(
-      { text: text.trim(), walletAddress: publicKey.toBase58() },
+      { text: text.trim(), walletAddress: address },
       { onSuccess: () => setText('') }
     );
   };
@@ -238,3 +238,4 @@ export function CommentSection({ mint }: CommentSectionProps) {
     </div>
   );
 }
+

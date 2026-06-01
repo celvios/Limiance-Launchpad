@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { SolanaWalletProvider } from '@/providers/SolanaWalletProvider';
+import { BscWalletProvider } from '@/providers/BscWalletProvider';
+import { EmbeddedWalletProvider } from '@/providers/EmbeddedWalletProvider';
 import { ReactQueryProvider } from '@/providers/ReactQueryProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -90,9 +91,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ReactQueryProvider>
-      <SolanaWalletProvider>
-        <AppShellInner>{children}</AppShellInner>
-      </SolanaWalletProvider>
+      <BscWalletProvider>
+        <EmbeddedWalletProvider>
+          <AppShellInner>{children}</AppShellInner>
+        </EmbeddedWalletProvider>
+      </BscWalletProvider>
     </ReactQueryProvider>
   );
 }

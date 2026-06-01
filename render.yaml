@@ -1,87 +1,59 @@
 version: "1"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Launchpad Backend — Render deployment
-#
-# HOW TO DEPLOY:
-#   1. Push this repo to GitHub.
-#   2. Go to https://dashboard.render.com → New → Blueprint.
-#   3. Connect your GitHub repo — Render auto-detects this file.
-#   4. After first deploy, set the secret env vars in the Render dashboard
-#      (listed under "Set these in dashboard" below).
-#   5. After `anchor deploy` on devnet, update PROGRAM_ID in the dashboard
-#      and trigger a manual redeploy.
-# ─────────────────────────────────────────────────────────────────────────────
-
 services:
   - type: web
     name: launchpad-backend
     runtime: node
     rootDir: backend
     buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npx prisma db push --accept-data-loss && node dist/index.js
+    startCommand: npx prisma db push && node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
-
     envVars:
-      # ── Auto-injected from the Postgres database below ───────────────────────
       - key: DATABASE_URL
         fromDatabase:
           name: launchpad-db
           property: connectionString
-
-      # ── Static values — safe to commit ───────────────────────────────────────
       - key: NODE_ENV
         value: production
-
-      - key: RPC_URL_DEVNET
-        value: https://api.devnet.solana.com
-
-      - key: RPC_URL
-        value: https://api.devnet.solana.com
-
-      - key: PROGRAM_ID
-        value: F97Ry5kDim5mvtJpZwYcwh3xcrGcna1c4hRhgNUHiV4C
-
-      - key: WHALE_THRESHOLD_SOL
+      - key: BSC_CHAIN_ID
+        value: "97"
+      - key: BSC_RPC_URL
+        value: https://data-seed-prebsc-1-s1.bnbchain.org:8545
+      - key: FACTORY_ADDRESS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: TREASURY_ADDRESS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: INDEXER_START_BLOCK
+        value: "0"
+      - key: WHALE_THRESHOLD_USDT
         value: "10"
-
+      - key: TOKEN_CREATION_FEE_USDT
+        value: "10"
       - key: PINATA_GATEWAY
         value: https://gateway.pinata.cloud
-
-      - key: ALLOWED_ORIGINS
-        value: https://limiance-launchpad.onrender.com
-
-      # ── Set these manually in the Render dashboard ────────────────────────────
-      #
-      # REDIS_URL
-      #   Optional but recommended. Get a free Redis from Upstash:
-      #   https://upstash.com → Create Database → Copy "UPSTASH_REDIS_REST_URL"
-      #   Use the ioredis-compatible URL format: rediss://:TOKEN@HOST:PORT
-      #   If not set, caching is disabled (API still works, just slower).
-      #
-      # ALLOWED_ORIGINS
-      #   Comma-separated list of allowed frontend origins.
-      #   Example: https://limiance.vercel.app,https://limiance.xyz
-      #   If not set, all origins are allowed (safe for a public API).
-      #
-      # HELIUS_WEBHOOK_SECRET
-      #   From the Helius dashboard. Required for the /webhook/helius endpoint
-      #   to verify incoming webhook payloads.
-      #   Can skip until you set up the Helius webhook subscription.
-      #
-      # PINATA_API_KEY + PINATA_SECRET_API_KEY
-      #   From https://pinata.cloud. Required for POST /api/upload (image uploads).
-      #   Without these, token creation with image upload will fail.
-      #
-      # RPC_URL / RPC_URL_DEVNET (optional upgrade)
-      #   Replace the public devnet URL above with a Helius key URL for
-      #   higher rate limits: https://devnet.helius-rpc.com/?api-key=YOUR_KEY
-      #
-      # JWT_SECRET  ← REQUIRED for the SIWS session system
-      #   Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-      #   Set this in the Render dashboard under Environment → JWT_SECRET.
-      #   Without it, logins will use the fallback "change-me-in-production" string (insecure).
+      - key: SUPPORTED_PAYMENT_ASSETS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: USDT_ADDRESS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: PANCAKE_ROUTER_ADDRESS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: WBNB_ADDRESS
+        value: "0x0000000000000000000000000000000000000000"
+      - key: PIMLICO_API_KEY
+        sync: false
+      - key: PIMLICO_BUNDLER_URL
+        sync: false
+      - key: PIMLICO_PAYMASTER_URL
+        sync: false
+      - key: PIMLICO_SPONSORSHIP_POLICY_ID
+        sync: false
+      - key: PRIVY_APP_ID
+        sync: false
+      - key: PRIVY_APP_SECRET
+        sync: false
+      - key: INDEXER_SECRET
+        generateValue: true
 
 databases:
   - name: launchpad-db

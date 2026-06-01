@@ -14,13 +14,17 @@ import { chartRoutes } from './routes/chart';
 import { profileRoutes } from './routes/profiles';
 import { commentRoutes } from './routes/comments';
 import { followRoutes } from './routes/follows';
+import { depositRoutes } from './routes/deposits';
 import { prisma } from './services/prisma';
+import { assertProductionConfig } from './services/production';
 import { addClient, removeClient } from './ws/server';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 async function main() {
+  assertProductionConfig();
+
   const app = Fastify({
     logger: {
       level: IS_DEV ? 'info' : 'warn',
@@ -62,6 +66,7 @@ async function main() {
   await app.register(profileRoutes);
   await app.register(commentRoutes);
   await app.register(followRoutes);
+  await app.register(depositRoutes);
 
   // ── WebSocket endpoint ───────────────────────────────────────────────────────
 

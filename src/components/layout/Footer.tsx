@@ -98,7 +98,7 @@ export function Footer() {
                 marginBottom: 'var(--space-4)',
               }}
             >
-              The most trusted token launchpad on Solana. Bonding curves, fair launches, automatic Raydium graduation.
+              The most trusted token launchpad on BSC. Bonding curves, fair launches, automatic PancakeSwap graduation.
             </p>
             {/* Social icons */}
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
@@ -258,3 +258,4 @@ export function Footer() {
     </footer>
   );
 }
+

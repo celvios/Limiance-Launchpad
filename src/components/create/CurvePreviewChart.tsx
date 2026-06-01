@@ -178,7 +178,7 @@ export function CurvePreviewChart({
           fontSize={8}
           fontFamily="'DM Sans', sans-serif"
         >
-          PRICE (SOL)
+          PRICE (USDT)
         </text>
         <text
           x={CHART_W - PAD.right + 8}

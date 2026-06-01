@@ -4,13 +4,13 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Compass, Heart, User, Zap, GraduationCap, Settings, ExternalLink, Power, ChevronRight } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
 import { useUIStore } from '@/store/uiStore';
 
 export function MenuNavLinks() {
   const pathname = usePathname();
-  const { connected, publicKey, disconnect } = useWallet();
+  const { connected, address, disconnect } = useWallet();
   const watchlistCount = useWatchlistStore((s) => s.count());
   const { setMobileMenuOpen } = useUIStore();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
@@ -25,7 +25,7 @@ export function MenuNavLinks() {
     { label: 'Feed', href: '/', icon: Home },
     { label: 'Explore', href: '/explore', icon: Compass },
     { label: 'Watchlist', href: '/profile#watchlist', icon: Heart, badge: watchlistCount },
-    { label: 'Profile', href: connected && publicKey ? `/profile/${publicKey.toBase58()}` : '/profile', icon: User },
+    { label: 'Profile', href: connected && address ? `/profile/${address}` : '/profile', icon: User },
     { label: 'Near Graduation', href: '/explore?filter=near-grad', icon: Zap, iconColor: 'var(--graduation)' },
     { label: 'Graduated', href: '/explore?filter=graduated', icon: GraduationCap },
   ];
@@ -229,3 +229,6 @@ export function MenuNavLinks() {
     </div>
   );
 }
+
+
+

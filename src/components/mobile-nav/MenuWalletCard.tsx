@@ -1,23 +1,22 @@
 'use client';
 
 import React from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useConnection } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
+import { useConnection } from '@/providers/BscWalletProvider';
 import { useQuery } from '@tanstack/react-query';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 export function MenuWalletCard() {
-  const { publicKey } = useWallet();
+  const { address } = useWallet();
   const { connection } = useConnection();
 
   const { data: balance } = useQuery({
-    queryKey: ['sol-balance', publicKey?.toBase58()],
+    queryKey: ['bnb-balance', address],
     queryFn: async () => {
-      if (!publicKey) return 0;
-      const lamports = await connection.getBalance(publicKey);
-      return lamports / LAMPORTS_PER_SOL;
+      if (!address) return 0;
+      const wei = await connection.getBalance(address);
+      return wei / 1e18;
     },
-    enabled: !!publicKey,
+    enabled: !!address,
     refetchInterval: 15000,
   });
 
@@ -27,7 +26,7 @@ export function MenuWalletCard() {
   const mockCreated = 3;
   const mockGraduated = 1;
 
-  if (!publicKey) return null;
+  if (!address) return null;
 
   return (
     <div
@@ -45,10 +44,10 @@ export function MenuWalletCard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            SOL Balance
+            Gas Balance
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', color: '#FFFFFF', fontWeight: 600 }}>
-            {balance !== undefined ? `${balance.toFixed(2)} SOL` : '— SOL'}
+            {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -56,7 +55,7 @@ export function MenuWalletCard() {
             Portfolio Value
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', color: 'var(--buy)', fontWeight: 600 }}>
-            {portfolioValue > 0 ? `${portfolioValue.toFixed(1)} SOL` : '— SOL'}
+            {portfolioValue > 0 ? `${portfolioValue.toFixed(1)} USDT` : '— USDT'}
           </div>
         </div>
       </div>
@@ -93,3 +92,6 @@ export function MenuWalletCard() {
     </div>
   );
 }
+
+
+

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '@/lib/constants';
 import { loginWithWallet, getAuthToken } from '@/lib/session';
@@ -47,9 +47,9 @@ export type UsernameStatus =
 /* ── Hook ── */
 
 export function useOnboarding() {
-  const { publicKey, signMessage } = useWallet();
+  const { address, signMessage } = useWallet();
   const queryClient = useQueryClient();
-  const walletAddress = publicKey?.toBase58() ?? '';
+  const walletAddress = address ?? '';
 
   const [profileLoading, setProfileLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -117,7 +117,7 @@ export function useOnboarding() {
           if (USE_MOCK) {
             await delay(600);
             // Mock: "admin", "test", "launch" are taken
-            const taken = ['admin', 'test', 'launch', 'solana'].includes(
+            const taken = ['admin', 'test', 'launch', 'bsc'].includes(
               username.toLowerCase()
             );
             callback(taken ? 'taken' : 'available');
@@ -144,7 +144,7 @@ export function useOnboarding() {
       profilePicUri: string | null;
       coverUri: string | null;
     }) => {
-      if (!publicKey) throw new Error('Wallet not connected');
+      if (!address) throw new Error('Wallet not connected');
 
       setCreating(true);
       setCreateError(null);
@@ -191,7 +191,7 @@ export function useOnboarding() {
         setCreating(false);
       }
     },
-    [publicKey, walletAddress, signMessage, queryClient]
+    [address, walletAddress, signMessage, queryClient]
   );
 
   /* ── Upload file to IPFS ── */
@@ -246,3 +246,5 @@ export function useOnboarding() {
     walletAddress,
   };
 }
+
+

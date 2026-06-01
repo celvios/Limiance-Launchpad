@@ -147,7 +147,7 @@ export function ActivityFeed({ mint }: ActivityFeedProps) {
                     color: trade.type === 'buy' ? 'var(--buy)' : 'var(--sell)',
                   }}
                 >
-                  {trade.solAmount.toFixed(2)} SOL
+                  {trade.solAmount.toFixed(2)} USDT
                 </span>
               </div>
 
@@ -191,3 +191,4 @@ export function ActivityFeed({ mint }: ActivityFeedProps) {
     </div>
   );
 }
+

@@ -173,7 +173,7 @@ export const TickerRow = memo(function TickerRow({
             color: 'var(--text-muted)',
           }}
         >
-          {trade.solAmount.toFixed(2)} SOL
+          {trade.solAmount.toFixed(2)} USDT
         </span>
         <span
           style={{
@@ -188,3 +188,4 @@ export const TickerRow = memo(function TickerRow({
     </Link>
   );
 });
+

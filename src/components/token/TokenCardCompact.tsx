@@ -147,7 +147,7 @@ export const TokenCardCompact = memo(function TokenCardCompact({
             color: 'var(--text-primary)',
           }}
         >
-          {formatPrice(price)} SOL
+          {formatPrice(price)} USDT
         </div>
 
         {/* Supply bar */}
@@ -191,3 +191,4 @@ export const TokenCardCompact = memo(function TokenCardCompact({
     </Link>
   );
 });
+

@@ -7,14 +7,14 @@ interface GraduationBannerProps {
   isGraduated: boolean;
   isNearGrad: boolean;
   supplyPercent: number;
-  raydiumPoolAddress: string | null;
+  dexPoolAddress: string | null;
 }
 
 export function GraduationBanner({
   isGraduated,
   isNearGrad,
   supplyPercent,
-  raydiumPoolAddress,
+  dexPoolAddress,
 }: GraduationBannerProps) {
   if (!isGraduated && !isNearGrad) return null;
 
@@ -44,7 +44,7 @@ export function GraduationBanner({
               letterSpacing: '1px',
             }}
           >
-            GRADUATED TO RAYDIUM
+            GRADUATED TO PancakeSwap
           </div>
           <div
             style={{
@@ -54,12 +54,12 @@ export function GraduationBanner({
               marginTop: 'var(--space-1)',
             }}
           >
-            This token has reached its graduation threshold and is now trading on Raydium DEX.
+            This token has reached its graduation threshold and is now trading on PancakeSwap DEX.
           </div>
         </div>
-        {raydiumPoolAddress && (
+        {dexPoolAddress && (
           <a
-            href={`https://raydium.io/swap/?inputMint=sol&outputMint=${raydiumPoolAddress}`}
+            href={`https://pancakeswap.finance/swap?outputCurrency=${dexPoolAddress}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -77,7 +77,7 @@ export function GraduationBanner({
               flexShrink: 0,
             }}
           >
-            Trade on Raydium
+            Trade on PancakeSwap
             <ExternalLink size={14} />
           </a>
         )}
@@ -122,9 +122,11 @@ export function GraduationBanner({
             marginTop: '2px',
           }}
         >
-          {supplyPercent.toFixed(0)}% of supply minted. Raydium graduation incoming!
+          {supplyPercent.toFixed(0)}% of supply minted. PancakeSwap graduation incoming!
         </div>
       </div>
     </div>
   );
 }
+
+

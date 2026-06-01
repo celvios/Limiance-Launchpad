@@ -10,17 +10,17 @@ export async function generateMetadata({ params }: TokenPageProps): Promise<Meta
 
   return {
     title: `Token ${mint.slice(0, 8)}... — LAUNCH`,
-    description: `View and trade this token on LAUNCH — Solana bonding curve launchpad`,
+    description: `View and trade this token on LAUNCH — BSC bonding curve launchpad`,
     openGraph: {
       title: `Token on LAUNCH`,
-      description: `View and trade on LAUNCH — Solana bonding curve launchpad`,
+      description: `View and trade on LAUNCH — BSC bonding curve launchpad`,
       images: [`/api/og/${mint}`],
       type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
       title: `Token on LAUNCH`,
-      description: `View and trade on LAUNCH — Solana bonding curve launchpad`,
+      description: `View and trade on LAUNCH — BSC bonding curve launchpad`,
       images: [`/api/og/${mint}`],
     },
   };
@@ -29,3 +29,4 @@ export async function generateMetadata({ params }: TokenPageProps): Promise<Meta
 export default function TokenPage() {
   return <TokenPageClient />;
 }
+

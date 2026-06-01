@@ -22,8 +22,8 @@ function generateMockTrade(): TradeEvent {
   const idx = Math.floor(Math.random() * MOCK_SYMBOLS.length);
   const isBuy = Math.random() > 0.4;
   const amount = Math.floor(100 + Math.random() * 10000);
-  const sol = parseFloat((amount * (0.00001 + Math.random() * 0.01)).toFixed(4));
-  const isWhale = sol > 10;
+  const USDT = parseFloat((amount * (0.00001 + Math.random() * 0.01)).toFixed(4));
+  const isWhale = USDT > 10;
 
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let wallet = '';
@@ -35,7 +35,7 @@ function generateMockTrade(): TradeEvent {
     tokenMint: MOCK_MINTS[idx % MOCK_MINTS.length],
     tokenSymbol: MOCK_SYMBOLS[idx],
     amount,
-    solAmount: sol,
+    solAmount: USDT,
     walletAddress: wallet,
     txSignature: `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`,
     timestamp: Date.now(),
@@ -96,7 +96,7 @@ export function useTradeTicker() {
           const shortAddress = `${address.slice(0, 4)}...${address.slice(-2)}`;
           useUIStore.getState().addToast({
             type: 'whale',
-            message: `${shortAddress} ${trade.type} ${trade.solAmount} SOL of $${trade.tokenSymbol}`,
+            message: `${shortAddress} ${trade.type} ${trade.solAmount} USDT of $${trade.tokenSymbol}`,
             href: `/token/${trade.tokenMint}`
           });
         }
@@ -147,7 +147,7 @@ export function useTradeTicker() {
               const shortAddress = `${address.slice(0, 4)}...${address.slice(-2)}`;
               useUIStore.getState().addToast({
                 type: 'whale',
-                message: `${shortAddress} ${trade.type} ${trade.solAmount} SOL of $${trade.tokenSymbol}`,
+                message: `${shortAddress} ${trade.type} ${trade.solAmount} USDT of $${trade.tokenSymbol}`,
                 href: `/token/${trade.tokenMint}`
               });
             }
@@ -182,3 +182,4 @@ export function useTradeTicker() {
     };
   }, [addTrade, setWsStatus, handleGraduation]);
 }
+

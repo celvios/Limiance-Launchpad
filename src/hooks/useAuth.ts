@@ -1,45 +1,25 @@
 'use client';
 
-/**
- * useAuth — SIWS (Sign-In With Solana) session hook.
- *
- * Watches wallet connect/disconnect events and automatically:
- *  - Logs in (prompts ONE signMessage popup) when a wallet connects
- *  - Clears the session on disconnect
- *
- * Usage:
- *   const { isAuthenticated, isLoggingIn, token, login, logout } = useAuth();
- */
-
 import { useCallback, useEffect, useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { loginWithWallet, getAuthToken, clearSession } from '@/lib/session';
 
 export interface AuthState {
-  /** True once the JWT session has been established. */
   isAuthenticated: boolean;
-  /** True while the login signMessage popup is pending. */
   isLoggingIn: boolean;
-  /** The JWT token, or null if not authenticated. */
   token: string | null;
-  /** Manually trigger login (e.g. if autoLogin failed). */
   login: () => Promise<void>;
-  /** Clear the session and mark as unauthenticated. */
   logout: () => void;
 }
 
 export function useAuth(): AuthState {
-  const { publicKey, signMessage, connected, disconnect } = useWallet();
-  const walletAddress = publicKey?.toBase58() ?? null;
-
+  const { address, signMessage, connected } = useWallet();
   const [token, setToken] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const login = useCallback(async () => {
-    if (!walletAddress || !signMessage) return;
-
-    // Already have a valid cached token — no popup needed
-    const cached = getAuthToken(walletAddress);
+    if (!address || !signMessage) return;
+    const cached = getAuthToken(address);
     if (cached) {
       setToken(cached);
       return;
@@ -47,34 +27,27 @@ export function useAuth(): AuthState {
 
     setIsLoggingIn(true);
     try {
-      const jwt = await loginWithWallet(walletAddress, signMessage);
+      const jwt = await loginWithWallet(address, signMessage);
       setToken(jwt);
-    } catch (err) {
-      console.error('[useAuth] Login failed:', err);
-      // Don't block the UI — user can retry or continue without social actions
+    } catch (error) {
+      console.error('[useAuth] EVM login failed:', error);
     } finally {
       setIsLoggingIn(false);
     }
-  }, [walletAddress, signMessage]);
+  }, [address, signMessage]);
 
   const logout = useCallback(() => {
-    if (walletAddress) clearSession(walletAddress);
+    if (address) clearSession(address);
     setToken(null);
-  }, [walletAddress]);
+  }, [address]);
 
-  // Auto-login whenever the wallet connects
   useEffect(() => {
-    if (connected && walletAddress && signMessage) {
-      login();
-    }
-  }, [connected, walletAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (connected && address && signMessage) login();
+  }, [connected, address, signMessage, login]);
 
-  // Clear session on disconnect
   useEffect(() => {
-    if (!connected && walletAddress) {
-      logout();
-    }
-  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!connected && address) logout();
+  }, [connected, address, logout]);
 
   return {
     isAuthenticated: !!token,

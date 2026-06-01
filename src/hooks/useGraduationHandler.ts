@@ -68,7 +68,7 @@ export function useGraduationHandler(mint: string | null = null) {
         await sleep(400);
         addToast({
           type: 'success',
-          message: `🎉 $${event.tokenSymbol} graduated to Raydium!`,
+          message: `🎉 $${event.tokenSymbol} graduated to PancakeSwap!`,
           duration: 8000,
         });
 
@@ -118,3 +118,4 @@ export function useGraduationHandler(mint: string | null = null) {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+

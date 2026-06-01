@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { Settings, Award, ExternalLink } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
@@ -33,12 +33,12 @@ export default function ProfilePage() {
   const params = useParams();
   const wallet = params.wallet as string;
   const [activeTab, setActiveTab] = useState<ProfileTab>('created');
-  const { publicKey } = useWallet();
+  const { address } = useWallet();
   const { openModal } = useUIStore();
 
   const { data: profile, isLoading, isError } = useProfile(wallet);
 
-  const isOwnProfile = publicKey?.toBase58() === wallet;
+  const isOwnProfile = address?.toLowerCase() === wallet.toLowerCase();
 
   if (isLoading) return <ProfileSkeleton />;
 
@@ -430,10 +430,10 @@ function HoldingsTab({ wallet }: { wallet: string }) {
               {formatNumber(h.amount, 0)}
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {h.avgBuyPrice < 0.001 ? h.avgBuyPrice.toFixed(6) : h.avgBuyPrice.toFixed(4)} SOL
+              {h.avgBuyPrice < 0.001 ? h.avgBuyPrice.toFixed(6) : h.avgBuyPrice.toFixed(4)} USDT
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)' }}>
-              {h.currentPrice < 0.001 ? h.currentPrice.toFixed(6) : h.currentPrice.toFixed(4)} SOL
+              {h.currentPrice < 0.001 ? h.currentPrice.toFixed(6) : h.currentPrice.toFixed(4)} USDT
             </div>
             <div
               style={{
@@ -447,7 +447,7 @@ function HoldingsTab({ wallet }: { wallet: string }) {
               {h.pnlPercent.toFixed(1)}%
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)' }}>
-              {h.value < 1 ? h.value.toFixed(4) : formatNumber(h.value, 2)} SOL
+              {h.value < 1 ? h.value.toFixed(4) : formatNumber(h.value, 2)} USDT
             </div>
           </div>
         </Link>
@@ -518,7 +518,7 @@ function TradesTab({ wallet }: { wallet: string }) {
               color: 'var(--text-primary)',
             }}
           >
-            {trade.solAmount} SOL
+            {(trade.paymentAmount ?? trade.solAmount)} USDT
           </span>
 
           <span
@@ -708,3 +708,6 @@ function ProfileSkeleton() {
     </div>
   );
 }
+
+
+

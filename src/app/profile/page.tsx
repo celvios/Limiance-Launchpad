@@ -2,22 +2,22 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { Wallet } from 'lucide-react';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 
 export default function ProfileRedirectPage() {
   const router = useRouter();
-  const { publicKey, connected } = useWallet();
+  const { address, connected } = useWallet();
 
   useEffect(() => {
-    if (connected && publicKey) {
-      router.replace(`/profile/${publicKey.toBase58()}`);
+    if (connected && address) {
+      router.replace(`/profile/${address}`);
     }
-  }, [connected, publicKey, router]);
+  }, [connected, address, router]);
 
   // While redirecting, show nothing
-  if (connected && publicKey) {
+  if (connected && address) {
     return (
       <div
         style={{
@@ -107,3 +107,4 @@ export default function ProfileRedirectPage() {
     </div>
   );
 }
+
