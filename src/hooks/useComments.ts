@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { fetchComments, postComment, upvoteComment } from '@/lib/api';
-import { getAuthToken, loginWithWallet } from '@/lib/session';
+import { requireAuthToken } from '@/lib/session';
 import type { CommentSort, Comment } from '@/lib/types';
 
 export function useComments(mint: string, sort: CommentSort = 'new') {
@@ -16,14 +16,13 @@ export function useComments(mint: string, sort: CommentSort = 'new') {
 }
 
 export function usePostComment(mint: string) {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ text, walletAddress }: { text: string; walletAddress: string }) => {
-      if (!address || !signMessage) throw new Error('Wallet not connected');
-      let token = getAuthToken(walletAddress);
-      if (!token) token = await loginWithWallet(walletAddress, signMessage);
+      if (!address) throw new Error('Wallet not connected');
+      const token = requireAuthToken(walletAddress);
       return postComment(mint, text, walletAddress, token);
     },
     onSuccess: (newComment: Comment) => {
@@ -40,14 +39,13 @@ export function usePostComment(mint: string) {
 }
 
 export function useUpvoteComment(mint: string) {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (commentId: string) => {
-      if (!address || !signMessage) throw new Error('Wallet not connected');
-      let token = getAuthToken(address);
-      if (!token) token = await loginWithWallet(address, signMessage);
+      if (!address) throw new Error('Wallet not connected');
+      const token = requireAuthToken(address);
       return upvoteComment(commentId, address, token);
     },
     onMutate: async (commentId: string) => {

@@ -60,6 +60,20 @@ export function getAuthToken(walletAddress: string): string | null {
   return loadStoredSession(walletAddress)?.token ?? null;
 }
 
+/**
+ * Returns the cached JWT for the given wallet, or throws a user-friendly error
+ * if none exists. Use this in action hooks (profile, comments, trades) instead
+ * of `loginWithWallet` — we never want to trigger a MetaMask signature request
+ * as a side-effect of a user action.
+ */
+export function requireAuthToken(walletAddress: string): string {
+  const token = getAuthToken(walletAddress);
+  if (!token) {
+    throw new Error('Session expired — please reconnect your wallet to continue.');
+  }
+  return token;
+}
+
 function buildLoginMessage(timestamp: number): string {
   return `Limiance Launchpad\n\nSign to authenticate your BSC session.\n\nThis request will not trigger any blockchain transaction or cost gas.\n\nTimestamp: ${timestamp}`;
 }

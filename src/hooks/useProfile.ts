@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { getAuthToken, loginWithWallet } from '@/lib/session';
+import { requireAuthToken } from '@/lib/session';
 import {
   fetchProfile,
   updateProfile,
@@ -25,14 +25,13 @@ export function useProfile(walletAddress: string) {
 }
 
 export function useUpdateProfile(walletAddress: string) {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (data: { username: string; bio: string; profilePicUri?: string }) => {
-      if (!address || !signMessage) throw new Error('Wallet not connected');
-      let token = getAuthToken(walletAddress);
-      if (!token) token = await loginWithWallet(walletAddress, signMessage);
+      if (!address) throw new Error('Wallet not connected');
+      const token = requireAuthToken(walletAddress);
       return updateProfile(walletAddress, data, token);
     },
     onSuccess: (updatedProfile: UserProfile) => {
@@ -42,15 +41,14 @@ export function useUpdateProfile(walletAddress: string) {
 }
 
 export function useFollowUser(walletAddress: string) {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async () => {
-      if (!address || !signMessage) throw new Error('Wallet not connected');
+      if (!address) throw new Error('Wallet not connected');
       const followerWallet = address;
-      let token = getAuthToken(followerWallet);
-      if (!token) token = await loginWithWallet(followerWallet, signMessage);
+      const token = requireAuthToken(followerWallet);
       return followUser(followerWallet, walletAddress, token);
     },
     onMutate: async () => {
@@ -74,15 +72,14 @@ export function useFollowUser(walletAddress: string) {
 }
 
 export function useUnfollowUser(walletAddress: string) {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async () => {
-      if (!address || !signMessage) throw new Error('Wallet not connected');
+      if (!address) throw new Error('Wallet not connected');
       const followerWallet = address;
-      let token = getAuthToken(followerWallet);
-      if (!token) token = await loginWithWallet(followerWallet, signMessage);
+      const token = requireAuthToken(followerWallet);
       return unfollowUser(followerWallet, walletAddress, token);
     },
     onMutate: async () => {

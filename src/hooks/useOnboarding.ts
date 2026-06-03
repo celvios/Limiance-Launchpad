@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '@/lib/constants';
-import { loginWithWallet, getAuthToken } from '@/lib/session';
+import { requireAuthToken } from '@/lib/session';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false';
 const ONBOARDED_KEY = 'limiance-onboarded';
@@ -47,7 +47,7 @@ export type UsernameStatus =
 /* ── Hook ── */
 
 export function useOnboarding() {
-  const { address, signMessage } = useWallet();
+  const { address } = useWallet();
   const queryClient = useQueryClient();
   const walletAddress = address ?? '';
 
@@ -154,9 +154,7 @@ export function useOnboarding() {
           await delay(1200);
           markWalletOnboarded(walletAddress);
         } else {
-          const token =
-            getAuthToken(walletAddress) ||
-            (signMessage ? await loginWithWallet(walletAddress, signMessage) : null);
+          const token = requireAuthToken(walletAddress);
 
           const res = await fetch(`${API_BASE_URL}/profiles`, {
             method: 'POST',
@@ -191,7 +189,7 @@ export function useOnboarding() {
         setCreating(false);
       }
     },
-    [address, walletAddress, signMessage, queryClient]
+    [address, walletAddress, queryClient]
   );
 
   /* ── Upload file to IPFS ── */
