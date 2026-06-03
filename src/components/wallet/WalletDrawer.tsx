@@ -56,8 +56,21 @@ export function WalletDrawer() {
     setIsConnecting(true);
     try {
       await connect();
-    } catch (err) {
-      setConnectError(err instanceof Error ? err.message : 'Could not connect wallet');
+    } catch (err: unknown) {
+      // MetaMask errors are plain objects with a `code` field, not Error instances
+      const code = (err as { code?: number })?.code;
+      // 4001 = user rejected — silently ignore, no error banner
+      if (code === 4001) return;
+      // -32002 = already pending — prompt user to check MetaMask
+      if (code === -32002) {
+        setConnectError('MetaMask request already pending — please open MetaMask.');
+        return;
+      }
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { message?: string })?.message ?? 'Could not connect wallet';
+      setConnectError(msg);
     } finally {
       setIsConnecting(false);
     }
