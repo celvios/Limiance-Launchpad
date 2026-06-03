@@ -28,14 +28,18 @@ export function recoverEvmAddress(message: string, signature: string): string | 
   try {
     const normalized = normalizeSignature(signature);
     if (!normalized) return null;
-    const recovered = (secp256k1 as any).recoverPublicKey(
-      new Uint8Array([normalized.recovery, ...normalized.compact]),
-      ethereumMessageHash(message),
-    );
+    
+    // Correct usage of @noble/curves/secp256k1 v1.x API
+    const recovered = secp256k1.Signature.fromCompact(normalized.compact)
+      .addRecoveryBit(normalized.recovery)
+      .recoverPublicKey(ethereumMessageHash(message))
+      .toRawBytes(false); // false = uncompressed
+
     const uncompressed = recovered.length === 65 ? recovered.slice(1) : recovered;
     const address = keccak_256(uncompressed).slice(-20);
     return `0x${Buffer.from(address).toString('hex')}`;
-  } catch {
+  } catch (err) {
+    console.error('Signature recovery failed:', err);
     return null;
   }
 }
