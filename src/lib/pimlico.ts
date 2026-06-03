@@ -15,7 +15,7 @@ export async function getPimlicoSmartAccount(signer: LocalAccount) {
 
   const publicClient = createPublicClient({
     chain,
-    transport: http(BSC_CHAIN_ID === 56 ? 'https://bsc-dataseed.binance.org/' : 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'),
+    transport: http(BSC_RPC_URL),
   });
 
   const pimlicoClient = createPimlicoClient({

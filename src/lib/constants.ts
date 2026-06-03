@@ -2,7 +2,7 @@ export const BSC_TESTNET_CHAIN_ID = 97;
 export const BSC_MAINNET_CHAIN_ID = 56;
 export const BSC_CHAIN_ID = Number(process.env.NEXT_PUBLIC_BSC_CHAIN_ID || BSC_TESTNET_CHAIN_ID);
 export const BSC_RPC_URL =
-  process.env.NEXT_PUBLIC_BSC_RPC_URL || "https://data-seed-prebsc-1-s1.bnbchain.org:8545";
+  process.env.NEXT_PUBLIC_BSC_RPC_URL || "https://bsc-testnet.publicnode.com";
 export const FACTORY_ADDRESS =
   process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "0x0000000000000000000000000000000000000000";
 export const TREASURY_ADDRESS =
