@@ -16,7 +16,15 @@ export function StepDone({ onClose, direction }: StepDoneProps) {
   const { username, profilePicUri } = useOnboardingStore();
   const { diceBearUrl } = useOnboarding();
 
-  const avatarSrc = profilePicUri || diceBearUrl;
+  const resolveIpfs = (uri: string | null | undefined) => {
+    if (!uri) return '';
+    if (uri.startsWith('ipfs://')) {
+      return `https://gateway.pinata.cloud/ipfs/${uri.replace('ipfs://', '')}`;
+    }
+    return uri;
+  };
+
+  const avatarSrc = resolveIpfs(profilePicUri) || diceBearUrl;
   const displayName = username.trim() || 'anon';
 
   const handleExplore = () => {

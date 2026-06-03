@@ -211,17 +211,9 @@ export function useOnboarding() {
           return `ipfs://${hash}`;
         }
 
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetch(`${API_BASE_URL}/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!res.ok) throw new Error('Upload failed');
-        const data = (await res.json()) as { uri: string };
-        return data.uri;
+        const { uploadToIPFS } = await import('@/lib/pinata');
+        const uri = await uploadToIPFS(file);
+        return uri;
       } catch {
         return null;
       }
