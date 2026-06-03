@@ -2,8 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { BSC_CHAIN_ID, BSC_RPC_URL, GAS_CURRENCY } from '@/lib/constants';
-import { useAuth } from '@/hooks/useAuth';
-import { loginWithWallet, clearSession, verifyEmailOtp } from '@/lib/session';
+import { loginWithWallet, getAuthToken, clearSession, verifyEmailOtp } from '@/lib/session';
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -18,6 +17,7 @@ declare global {
 }
 
 interface BscWalletContextValue {
+  // Wallet
   address: string | null;
   email: string | null;
   authType: 'wallet' | 'email' | null;
@@ -32,33 +32,84 @@ interface BscWalletContextValue {
   ) => Promise<void>;
   disconnect: () => void;
   switchToBsc: () => Promise<void>;
+  // Auth (inlined — no circular dependency)
+  isAuthenticated: boolean;
+  isLoggingIn: boolean;
+  login: () => Promise<void>;
+  logout: () => void;
 }
 
 const BscWalletContext = createContext<BscWalletContextValue | null>(null);
 
-function AuthGate({ children }: { children: React.ReactNode }) {
-  useAuth();
-  return <>{children}</>;
-}
-
-function normalizeAddress(address: string | null | undefined) {
-  return address ? address.toLowerCase() : null;
+function normalizeAddress(addr: string | null | undefined) {
+  return addr ? addr.toLowerCase() : null;
 }
 
 export function BscWalletProvider({ children }: { children: React.ReactNode }) {
+  // ── Wallet state ──
   const [address, setAddress] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [authType, setAuthType] = useState<'wallet' | 'email' | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
 
+  // ── Auth state (inlined from useAuth to avoid circular dependency) ──
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // ── signMessage (defined early so login can reference it) ──
+  const signMessage = useCallback(async (msg: Uint8Array | string) => {
+    if (!window.ethereum || !address) throw new Error('Wallet not connected');
+    const text = typeof msg === 'string' ? msg : new TextDecoder().decode(msg);
+    const signature = (await window.ethereum.request({
+      method: 'personal_sign',
+      params: [text, address],
+    })) as string;
+    return signature;
+  }, [address]);
+
+  // ── Auth functions ──
+  const login = useCallback(async () => {
+    if (!address || !signMessage) return;
+    const cached = getAuthToken(address);
+    if (cached) {
+      setToken(cached);
+      return;
+    }
+    setIsLoggingIn(true);
+    try {
+      const jwt = await loginWithWallet(address, signMessage);
+      setToken(jwt);
+    } catch (error) {
+      console.error('[auth] EVM login failed:', error);
+      throw error;
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }, [address, signMessage]);
+
+  const logout = useCallback(() => {
+    if (address) clearSession(address);
+    setToken(null);
+    setAddress(null);
+    setEmail(null);
+    setAuthType(null);
+  }, [address]);
+
+  // ── Wallet functions ──
   const refresh = useCallback(async () => {
     if (!window.ethereum) return;
     const [accounts, rawChainId] = await Promise.all([
       window.ethereum.request({ method: 'eth_accounts' }) as Promise<string[]>,
       window.ethereum.request({ method: 'eth_chainId' }) as Promise<string>,
     ]);
-    setAddress(normalizeAddress(accounts[0]));
-    if (accounts[0]) setAuthType('wallet');
+    const addr = normalizeAddress(accounts[0]);
+    setAddress(addr);
+    if (addr) {
+      setAuthType('wallet');
+      // Restore cached session without signing
+      const cached = getAuthToken(addr);
+      if (cached) setToken(cached);
+    }
     setChainId(Number.parseInt(rawChainId, 16));
   }, []);
 
@@ -68,32 +119,22 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as string[];
-    const normalizedAddress = normalizeAddress(accounts[0]);
-    setAddress(normalizedAddress);
+    setAddress(normalizeAddress(accounts[0]));
     setEmail(null);
     setAuthType('wallet');
     const rawChainId = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
     setChainId(Number.parseInt(rawChainId, 16));
-    // Trigger sign-in immediately after the user explicitly connected.
-    // This is the ONLY place we should prompt MetaMask for a signature.
-    if (normalizedAddress) {
-      try {
-        const signFn = async (msg: Uint8Array | string) => {
-          const text = typeof msg === 'string' ? msg : new TextDecoder().decode(msg);
-          return (await window.ethereum!.request({
-            method: 'personal_sign',
-            params: [text, normalizedAddress],
-          })) as string;
-        };
-        await loginWithWallet(normalizedAddress, signFn);
-      } catch {
-        // Non-fatal: user may have dismissed the signature. They can re-try.
-      }
+    // Restore cached session if one exists (no MetaMask popup)
+    const addr = normalizeAddress(accounts[0]);
+    if (addr) {
+      const cached = getAuthToken(addr);
+      if (cached) setToken(cached);
     }
   }, []);
 
   const disconnect = useCallback(() => {
     if (address) clearSession(address);
+    setToken(null);
     setAddress(null);
     setEmail(null);
     setAuthType(null);
@@ -109,6 +150,9 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     setEmail(session.email);
     setAuthType('email');
     setChainId(BSC_CHAIN_ID);
+    // Email sessions get a token from the server directly
+    const cached = getAuthToken(normalizeAddress(session.wallet) ?? '');
+    if (cached) setToken(cached);
   }, []);
 
   const switchToBsc = useCallback(async () => {
@@ -134,16 +178,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     await refresh();
   }, [refresh]);
 
-  const signMessage = useCallback(async (msg: Uint8Array | string) => {
-    if (!window.ethereum || !address) throw new Error('Wallet not connected');
-    const text = typeof msg === 'string' ? msg : new TextDecoder().decode(msg);
-    const signature = (await window.ethereum.request({
-      method: 'personal_sign',
-      params: [text, address],
-    })) as string;
-    return signature;
-  }, [address]);
-
+  // ── Effects ──
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -152,10 +187,15 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     if (!window.ethereum?.on) return;
     const handleAccounts = (accounts: unknown) => {
       const next = Array.isArray(accounts) ? String(accounts[0] ?? '') : '';
-      setAddress(normalizeAddress(next));
-      if (next) {
+      const addr = normalizeAddress(next);
+      setAddress(addr);
+      if (addr) {
         setEmail(null);
         setAuthType('wallet');
+        const cached = getAuthToken(addr);
+        if (cached) setToken(cached);
+      } else {
+        setToken(null);
       }
     };
     const handleChain = (nextChainId: unknown) => {
@@ -181,13 +221,17 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       connectEmail,
       disconnect,
       switchToBsc,
+      isAuthenticated: !!token,
+      isLoggingIn,
+      login,
+      logout,
     }),
-    [address, email, authType, chainId, signMessage, connect, connectEmail, disconnect, switchToBsc],
+    [address, email, authType, chainId, signMessage, connect, connectEmail, disconnect, switchToBsc, token, isLoggingIn, login, logout],
   );
 
   return (
     <BscWalletContext.Provider value={value}>
-      <AuthGate>{children}</AuthGate>
+      {children}
     </BscWalletContext.Provider>
   );
 }
@@ -222,4 +266,3 @@ export function useConnection() {
     },
   };
 }
-

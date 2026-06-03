@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback, useState } from 'react';
-import { X, Wallet, ShieldCheck, AlertTriangle, Mail } from 'lucide-react';
+import { X, Wallet, ShieldCheck, AlertTriangle, Mail, LogIn, CheckCircle } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { BSC_CHAIN_ID } from '@/lib/constants';
@@ -12,12 +12,16 @@ import { useEmbeddedWallet } from '@/providers/EmbeddedWalletProvider';
 export function WalletDrawer() {
   const isOpen = useUIStore((s) => s.isWalletDrawerOpen);
   const closeDrawer = useUIStore((s) => s.closeWalletDrawer);
-  const { address, email: connectedEmail, authType, connected, chainId, connect, connectEmail, switchToBsc } = useWallet();
+  const { address, email: connectedEmail, authType, connected, chainId, connect, connectEmail, switchToBsc, isAuthenticated, isLoggingIn, login } = useWallet();
+
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
   const [emailState, setEmailState] = useState<'idle' | 'sent' | 'loading'>('idle');
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
   const embeddedWallet = useEmbeddedWallet();
   const embeddedStatus = embeddedWalletConfigStatus();
 
@@ -38,13 +42,35 @@ export function WalletDrawer() {
     };
   }, [isOpen, handleKeyDown]);
 
+  // Close only after fully authenticated (connected + signed in)
   useEffect(() => {
-    if (connected && chainId === BSC_CHAIN_ID && isOpen) closeDrawer();
-  }, [connected, chainId, isOpen, closeDrawer]);
+    if (isAuthenticated && isOpen) closeDrawer();
+  }, [isAuthenticated, isOpen, closeDrawer]);
 
   if (!isOpen) return null;
 
   const wrongNetwork = connected && chainId !== BSC_CHAIN_ID;
+
+  const handleConnect = async () => {
+    setConnectError(null);
+    setIsConnecting(true);
+    try {
+      await connect();
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Could not connect wallet');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    setConnectError(null);
+    try {
+      await login();
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Sign-in failed');
+    }
+  };
 
   const sendCode = async () => {
     setEmailState('loading');
@@ -65,7 +91,6 @@ export function WalletDrawer() {
     try {
       const walletLink = await embeddedWallet.connectEmailWallet(email);
       await connectEmail(email, code, walletLink);
-      closeDrawer();
     } catch (error) {
       setEmailError(error instanceof Error ? error.message : 'Email login failed');
       setEmailState('sent');
@@ -96,8 +121,10 @@ export function WalletDrawer() {
           animation: 'slideInRight 300ms var(--ease-default)',
           display: 'flex',
           flexDirection: 'column',
+          zIndex: 1,
         }}
       >
+        {/* Header */}
         <div
           style={{
             display: 'flex',
@@ -108,7 +135,7 @@ export function WalletDrawer() {
           }}
         >
           <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 600 }}>
-            BSC Wallet
+            Connect Wallet
           </h2>
           <button
             onClick={closeDrawer}
@@ -120,36 +147,145 @@ export function WalletDrawer() {
         </div>
 
         <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          <button
-            onClick={connect}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-4)',
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              textAlign: 'left',
-              width: '100%',
-            }}
-          >
-            <Wallet size={22} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
-                {connected ? 'Wallet Connected' : 'Connect EVM Wallet'}
-              </div>
-              {authType === 'wallet' && address && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  {address}
-                </div>
-              )}
-            </div>
-          </button>
 
-          {embeddedStatus.productionReady && (
+          {/* ── EVM Wallet ── */}
+          {!connected ? (
+            // Step 1: Not connected — show connect button
+            <button
+              id="connect-evm-wallet-btn"
+              onClick={handleConnect}
+              disabled={isConnecting}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-4)',
+                background: 'var(--brand)',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                color: '#fff',
+                cursor: isConnecting ? 'wait' : 'pointer',
+                textAlign: 'left',
+                width: '100%',
+                opacity: isConnecting ? 0.7 : 1,
+              }}
+            >
+              <Wallet size={22} />
+              <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
+                {isConnecting ? 'Connecting…' : 'Connect EVM Wallet'}
+              </div>
+            </button>
+          ) : !isAuthenticated ? (
+            // Step 2: Connected but not signed in — show sign-in button
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-4)',
+                  background: 'var(--bg-base)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                }}
+              >
+                <CheckCircle size={20} color="var(--buy)" />
+                <div>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600, fontSize: 14 }}>Wallet connected</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {address}
+                  </div>
+                </div>
+              </div>
+              <button
+                id="sign-in-btn"
+                onClick={handleSignIn}
+                disabled={isLoggingIn}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 'var(--space-2)',
+                  padding: 'var(--space-4)',
+                  background: 'var(--brand)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  color: '#fff',
+                  cursor: isLoggingIn ? 'wait' : 'pointer',
+                  fontFamily: 'var(--font-ui)',
+                  fontWeight: 600,
+                  opacity: isLoggingIn ? 0.7 : 1,
+                  width: '100%',
+                }}
+              >
+                <LogIn size={18} />
+                {isLoggingIn ? 'Signing in…' : 'Sign In to Continue'}
+              </button>
+              <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                A signature request will appear in MetaMask. This does not cost gas.
+              </p>
+            </div>
+          ) : (
+            // Step 3: Fully authenticated
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-4)',
+                background: 'var(--buy-dim)',
+                border: '1px solid var(--buy)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--buy)',
+              }}
+            >
+              <ShieldCheck size={22} />
+              <div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Signed in</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, marginTop: 2 }}>
+                  {authType === 'email' ? connectedEmail : address}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error message */}
+          {connectError && (
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--sell)', textAlign: 'center' }}>
+              {connectError}
+            </div>
+          )}
+
+          {/* Wrong network banner */}
+          {wrongNetwork && (
+            <button
+              onClick={switchToBsc}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-4)',
+                background: 'var(--sell-dim)',
+                border: '1px solid var(--sell)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--sell)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                width: '100%',
+              }}
+            >
+              <AlertTriangle size={22} />
+              <div>
+                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Wrong Network</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, marginTop: 4 }}>
+                  Click to switch to BSC
+                </div>
+              </div>
+            </button>
+          )}
+
+          {/* Email login (only when Privy is configured) */}
+          {embeddedStatus.productionReady && !connected && (
             <div
               style={{
                 display: 'flex',
@@ -196,57 +332,8 @@ export function WalletDrawer() {
                 disabled={emailState === 'loading' || !email || (emailState === 'sent' && code.length !== 6)}
                 style={emailButtonStyle}
               >
-                {emailState === 'loading' ? 'Working...' : emailState === 'sent' ? 'Verify Email' : 'Send Login Code'}
+                {emailState === 'loading' ? 'Working…' : emailState === 'sent' ? 'Verify Email' : 'Send Login Code'}
               </button>
-            </div>
-          )}
-
-          {wrongNetwork ? (
-            <button
-              onClick={switchToBsc}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-4)',
-                background: 'var(--sell-dim)',
-                border: '1px solid var(--sell)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--sell)',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <AlertTriangle size={22} />
-              <div>
-                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Switch to BSC Testnet</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, marginTop: 4 }}>
-                  Current chain: {chainId ?? 'unknown'}
-                </div>
-              </div>
-            </button>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-4)',
-                background: 'var(--buy-dim)',
-                border: '1px solid var(--buy)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--buy)',
-              }}
-            >
-              <ShieldCheck size={22} />
-              <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
-                {connected ? 'Ready on BSC' : 'BSC Testnet required'}
-              </div>
-              {authType === 'email' && connectedEmail && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                  {connectedEmail}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -264,6 +351,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text-primary)',
   fontFamily: 'var(--font-ui)',
   outline: 'none',
+  boxSizing: 'border-box',
 };
 
 const emailButtonStyle: React.CSSProperties = {
