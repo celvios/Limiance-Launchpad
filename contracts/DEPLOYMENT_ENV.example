@@ -1,7 +1,0 @@
-BSC_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
-DEPLOYER_PRIVATE_KEY=0xreplace_with_testnet_deployer_private_key
-TREASURY_ADDRESS=0xreplace_with_safe_treasury_address
-PANCAKE_ROUTER_ADDRESS=0xreplace_with_testnet_router_address
-WBNB_ADDRESS=0xreplace_with_testnet_wbnb_address
-USDT_ADDRESS=0xreplace_after_mock_usdt_deploy
-FACTORY_ADDRESS=0xreplace_after_factory_deploy
