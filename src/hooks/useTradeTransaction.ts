@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/providers/BscWalletProvider';
+import { useEmbeddedWallet } from '@/providers/EmbeddedWalletProvider';
 import { PAYMENT_ASSET } from '@/lib/constants';
 
 const DEFAULT_SLIPPAGE_BPS = 200;
@@ -50,13 +51,15 @@ export interface TradeResult {
 
 export function useBuy(tokenAddress: string) {
   const { address } = useWallet();
+  const { smartAccountClient } = useEmbeddedWallet();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const buy = useCallback(
     async (params: BuyParams): Promise<TradeResult> => {
-      if (!address || !window.ethereum) throw new Error('BSC wallet not connected');
+      if (!address) throw new Error('BSC wallet not connected');
+      if (!smartAccountClient && !window.ethereum) throw new Error('BSC wallet not connected');
       const saleAddress = params.saleAddress ?? tokenAddress;
       setIsLoading(true);
       setError(null);
@@ -67,29 +70,51 @@ export function useBuy(tokenAddress: string) {
           (params.quotePayment ? applySlippage(params.quotePayment, DEFAULT_SLIPPAGE_BPS, 'up') : 0n);
         if (value <= 0n) throw new Error('Missing USDT quote for buy transaction');
 
-        await window.ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: address,
-              to: PAYMENT_ASSET,
-              value: '0x0',
-              data: encodeApproveCall(saleAddress, value),
-            },
-          ],
-        });
+        const txs = [
+          {
+            to: PAYMENT_ASSET as `0x${string}`,
+            value: 0n,
+            data: encodeApproveCall(saleAddress, value) as `0x${string}`,
+          },
+          {
+            to: saleAddress as `0x${string}`,
+            value: 0n,
+            data: encodeBuyCall(params.amount, address, value) as `0x${string}`,
+          }
+        ];
 
-        const txHash = await window.ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: address,
-              to: saleAddress,
-              value: '0x0',
-              data: encodeBuyCall(params.amount, address, value),
-            },
-          ],
-        }) as string;
+        let txHash: string;
+        if (smartAccountClient) {
+          txHash = await smartAccountClient.sendTransaction({
+            calls: txs
+          });
+        } else {
+          // Send separately for normal EOA
+          const provider = window.ethereum;
+          if (!provider) throw new Error('No wallet provider found');
+          await provider.request({
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: address,
+                to: txs[0].to,
+                value: '0x0',
+                data: txs[0].data,
+              },
+            ],
+          });
+          txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: address,
+                to: txs[1].to,
+                value: '0x0',
+                data: txs[1].data,
+              },
+            ],
+          }) as string;
+        }
 
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['token-detail', tokenAddress] }),
@@ -106,7 +131,7 @@ export function useBuy(tokenAddress: string) {
         setIsLoading(false);
       }
     },
-    [address, tokenAddress, queryClient],
+    [address, tokenAddress, queryClient, smartAccountClient],
   );
 
   return { buy, isLoading, error };

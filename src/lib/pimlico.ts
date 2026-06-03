@@ -1,45 +1,50 @@
-import {
-  BSC_CHAIN_ID,
-  PAYMENT_ASSET,
-  PIMLICO_API_KEY,
-  PIMLICO_BUNDLER_URL,
-  PIMLICO_PAYMASTER_URL,
-  PIMLICO_SPONSORSHIP_POLICY_ID,
-} from './constants';
+import { createSmartAccountClient } from 'permissionless';
+import { toSimpleSmartAccount } from 'permissionless/accounts';
+import { createPimlicoClient } from 'permissionless/clients/pimlico';
+import { createPublicClient, http } from 'viem';
+import { bscTestnet, bsc } from 'viem/chains';
+import { BSC_CHAIN_ID, PIMLICO_BUNDLER_URL, PIMLICO_PAYMASTER_URL } from './constants';
+import type { LocalAccount } from 'viem';
 
-export interface PimlicoGasPolicy {
-  enabled: boolean;
-  chainId: number;
-  paymentAsset: string;
-  mode: 'sponsored' | 'disabled';
-  bundlerUrlConfigured: boolean;
-  paymasterUrlConfigured: boolean;
-  sponsorshipPolicyConfigured: boolean;
-  allowlistedFunctions: string[];
-}
+export async function getPimlicoSmartAccount(signer: LocalAccount) {
+  if (!PIMLICO_BUNDLER_URL || !PIMLICO_PAYMASTER_URL) {
+    throw new Error('Pimlico URLs not configured');
+  }
 
-export function getPimlicoGasPolicy(): PimlicoGasPolicy {
-  const enabled = Boolean(PIMLICO_API_KEY && PIMLICO_BUNDLER_URL && PIMLICO_PAYMASTER_URL);
+  const chain = BSC_CHAIN_ID === 56 ? bsc : bscTestnet;
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(BSC_CHAIN_ID === 56 ? 'https://bsc-dataseed.binance.org/' : 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'),
+  });
+
+  const pimlicoClient = createPimlicoClient({
+    transport: http(PIMLICO_PAYMASTER_URL),
+    entryPoint: {
+      address: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789', // v0.6
+      version: '0.6',
+    },
+  });
+
+  const simpleSmartAccount = await toSimpleSmartAccount({
+    client: publicClient,
+    owner: signer,
+    factoryAddress: '0x9406Cc6185a346906296840746125a0E44976454', // SimpleAccountFactory
+    entryPoint: {
+      address: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789', // v0.6
+      version: '0.6',
+    },
+  });
+
+  const smartAccountClient = createSmartAccountClient({
+    account: simpleSmartAccount,
+    chain,
+    bundlerTransport: http(PIMLICO_BUNDLER_URL),
+    paymaster: pimlicoClient,
+  });
+
   return {
-    enabled,
-    chainId: BSC_CHAIN_ID,
-    paymentAsset: PAYMENT_ASSET,
-    mode: enabled ? 'sponsored' : 'disabled',
-    bundlerUrlConfigured: Boolean(PIMLICO_BUNDLER_URL),
-    paymasterUrlConfigured: Boolean(PIMLICO_PAYMASTER_URL),
-    sponsorshipPolicyConfigured: Boolean(PIMLICO_SPONSORSHIP_POLICY_ID),
-    allowlistedFunctions: [
-      'createToken',
-      'buy(uint256,address,uint256)',
-      'buyWithBNB(uint256,address,uint256,uint256)',
-      'buyFromVault(address,address,uint256)',
-      'buyFromNativeVault(address,address,uint256,uint256,uint256,uint256,uint256)',
-    ],
+    smartAccountAddress: simpleSmartAccount.address,
+    smartAccountClient,
   };
-}
-
-export function pimlicoStatusLabel(): string {
-  return getPimlicoGasPolicy().enabled
-    ? 'Gas sponsored by Pimlico'
-    : 'Pimlico sponsorship not configured';
 }

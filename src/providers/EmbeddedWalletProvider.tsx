@@ -1,82 +1,135 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { BSC_CHAIN_ID, BSC_RPC_URL, PRIVY_APP_ID } from '@/lib/constants';
-import type { EmbeddedWalletLink } from '@/lib/embeddedWallet';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useWallet } from './BscWalletProvider';
+import { getPimlicoSmartAccount } from '@/lib/pimlico';
+import { toViemAccount } from '@privy-io/react-auth';
+import { PRIVY_APP_ID } from '@/lib/constants';
+
+function normalizeAddress(addr: string | null | undefined): string | null {
+  return addr ? addr.toLowerCase() : null;
+}
 
 type EmbeddedWalletContextValue = {
   configured: boolean;
   isLoading: boolean;
   error: string | null;
-  connectEmailWallet: (email: string) => Promise<EmbeddedWalletLink>;
+  smartAccountAddress: string | null;
+  smartAccountClient: any | null;
 };
 
 const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(null);
 
-declare global {
-  interface Window {
-    __limianceEmbeddedWallet?: EmbeddedWalletLink;
-  }
-}
-
-function fallbackLink(): EmbeddedWalletLink | null {
-  if (typeof window === 'undefined') return null;
-  return window.__limianceEmbeddedWallet ?? null;
-}
-
-async function optionalRuntimeImport(packageName: string): Promise<unknown | null> {
-  try {
-    const runtimeImport = new Function('name', 'return import(name)') as (name: string) => Promise<unknown>;
-    return await runtimeImport(packageName);
-  } catch {
-    return null;
-  }
-}
-
 export function EmbeddedWalletProvider({ children }: { children: React.ReactNode }) {
+  const { ready, authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
+  const { connected, address } = useWallet();
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [smartAccountClient, setSmartAccountClient] = useState<any>(null);
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
 
-  const connectEmailWallet = useCallback(async (_email: string): Promise<EmbeddedWalletLink> => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const injected = fallbackLink();
-      if (injected) return injected;
+  useEffect(() => {
+    if (!ready || !authenticated || !user || connected || isLoading) return;
 
-      if (!PRIVY_APP_ID) {
-        throw new Error('NEXT_PUBLIC_PRIVY_APP_ID is required for embedded email wallets.');
+    // Find the embedded wallet
+    const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
+    if (!embeddedWallet) return; // Might be still creating
+
+    // Capture in a non-undefined local for the closure
+    const wallet = embeddedWallet;
+    let isMounted = true;
+
+    async function setupPimlicoAndLogin() {
+      if (!isMounted) return;
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Convert Privy wallet to Viem account
+        const provider = await wallet.getEthereumProvider();
+        const viemAccount = await toViemAccount({ wallet });
+
+        // Derive Pimlico Smart Account
+        const { smartAccountAddress: saAddr, smartAccountClient: saClient } = await getPimlicoSmartAccount(viemAccount);
+        
+        if (!isMounted) return;
+        setSmartAccountAddress(saAddr);
+        setSmartAccountClient(saClient);
+
+        // Authenticate with backend using the EOA to sign, but storing the SA
+        const timestamp = Date.now();
+        const message = `Limiance Launchpad\n\nSign to authenticate your BSC session.\n\nThis request will not trigger any blockchain transaction or cost gas.\n\nTimestamp: ${timestamp}`;
+        
+        // EOA signs the message
+        const signature = await provider.request({
+          method: 'personal_sign',
+          params: [message, wallet.address],
+        });
+
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            walletAddress: wallet.address,
+            signature,
+            timestamp,
+            smartAccountAddress: saAddr,
+            email: user?.email?.address,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to authenticate with backend');
+        }
+
+        const data = await res.json();
+        
+        // Use a hidden hook from BscWalletProvider if possible, or just let BscWalletProvider see the auth state
+        // Actually, we can just call loginWithWallet, but loginWithWallet triggers metamask. 
+        // We need to inject our token and address manually. We can do that by just reloading or using BscWalletProvider's internal state.
+        
+        // BscWalletProvider handles its state by checking localStorage and fetching /api/auth/me on mount.
+        // We can just set the token in localStorage and dispatch an event or call a method on BscWalletProvider.
+        // wait, we can just reload the page for now, or let BscWalletProvider fetch `me`.
+        localStorage.setItem(`token_${normalizeAddress(saAddr)}`, data.token);
+        localStorage.setItem(`token_${normalizeAddress(wallet.address)}`, data.token);
+        
+        // We can use window.location.reload() to make BscWalletProvider pick it up, 
+        // but better to just use a custom event.
+        window.dispatchEvent(new Event('auth_state_changed'));
+        
+        // But since we are in EmbeddedWalletProvider, we could just reload for simplicity since this is one-time login
+        window.location.reload();
+
+      } catch (err) {
+        console.error('Failed to setup smart account:', err);
+        if (isMounted) setError(err instanceof Error ? err.message : 'Failed to setup smart account');
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-
-      const privy = await optionalRuntimeImport('@privy-io/react-auth');
-      if (!privy) {
-        throw new Error('Privy SDK is not installed. Run npm install after updating package.json.');
-      }
-
-      throw new Error(
-        `Privy app ${PRIVY_APP_ID} is installed. Configure Privy smart wallets with Pimlico bundler/paymaster URLs for BSC ${BSC_CHAIN_ID} (${BSC_RPC_URL}) before enabling headless wallet creation.`,
-      );
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : 'Embedded wallet setup failed';
-      setError(message);
-      throw nextError;
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
 
-  const value = useMemo(
-    () => ({
-      configured: Boolean(PRIVY_APP_ID),
-      isLoading,
-      error,
-      connectEmailWallet,
-    }),
-    [connectEmailWallet, error, isLoading],
-  );
+    setupPimlicoAndLogin();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ready, authenticated, user, wallets, connected, isLoading]);
 
   return (
-    <EmbeddedWalletContext.Provider value={value}>
+    <EmbeddedWalletContext.Provider
+      value={{
+        configured: Boolean(PRIVY_APP_ID),
+        isLoading,
+        error,
+        smartAccountAddress,
+        smartAccountClient,
+      }}
+    >
       {children}
     </EmbeddedWalletContext.Provider>
   );

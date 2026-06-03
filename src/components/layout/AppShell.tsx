@@ -14,11 +14,15 @@ import { ToastContainer } from '@/components/ui/Toast';
 import { GlobalWSProvider } from '@/components/layout/GlobalWSProvider';
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { MobileTopBar } from '@/components/mobile-nav/MobileTopBar';
+
 import { BottomNav } from '@/components/mobile-nav/BottomNav';
 import { MenuDrawer } from '@/components/mobile-nav/MenuDrawer';
 import { CommentModal } from '@/components/token/CommentModal';
 import { MobileLivePulse } from '@/components/layout/MobileLivePulse';
 import { LiveActivitySheet } from '@/components/layout/LiveActivitySheet';
+
+import { PrivyProvider } from '@privy-io/react-auth';
+import { BSC_CHAIN_ID, BSC_RPC_URL, PRIVY_APP_ID } from '@/lib/constants';
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -89,13 +93,46 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const bscChain = {
+    id: BSC_CHAIN_ID,
+    name: BSC_CHAIN_ID === 56 ? 'BNB Smart Chain' : 'BNB Smart Chain Testnet',
+    network: BSC_CHAIN_ID === 56 ? 'bsc' : 'bsc-testnet',
+    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+    rpcUrls: {
+      default: { http: [BSC_RPC_URL] },
+      public: { http: [BSC_RPC_URL] },
+    },
+    blockExplorers: {
+      default: { name: 'BscScan', url: BSC_CHAIN_ID === 56 ? 'https://bscscan.com' : 'https://testnet.bscscan.com' },
+    },
+  };
+
   return (
-    <ReactQueryProvider>
-      <BscWalletProvider>
-        <EmbeddedWalletProvider>
-          <AppShellInner>{children}</AppShellInner>
-        </EmbeddedWalletProvider>
-      </BscWalletProvider>
-    </ReactQueryProvider>
+    <PrivyProvider
+      appId={PRIVY_APP_ID || "no-app-id-found"}
+      config={{
+        loginMethods: ['email'],
+        appearance: {
+          theme: 'dark',
+          accentColor: '#10B981',
+          logo: 'https://placehold.co/400x400/png',
+        },
+        embeddedWallets: {
+          ethereum: {
+            createOnLogin: 'users-without-wallets',
+          },
+        },
+        defaultChain: bscChain,
+        supportedChains: [bscChain],
+      }}
+    >
+      <ReactQueryProvider>
+        <BscWalletProvider>
+          <EmbeddedWalletProvider>
+            <AppShellInner>{children}</AppShellInner>
+          </EmbeddedWalletProvider>
+        </BscWalletProvider>
+      </ReactQueryProvider>
+    </PrivyProvider>
   );
 }

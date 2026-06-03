@@ -8,22 +8,16 @@ import { BSC_CHAIN_ID } from '@/lib/constants';
 import { requestEmailOtp } from '@/lib/session';
 import { embeddedWalletConfigStatus } from '@/lib/embeddedWallet';
 import { useEmbeddedWallet } from '@/providers/EmbeddedWalletProvider';
+import { usePrivy } from '@privy-io/react-auth';
 
 export function WalletDrawer() {
   const isOpen = useUIStore((s) => s.isWalletDrawerOpen);
   const closeDrawer = useUIStore((s) => s.closeWalletDrawer);
-  const { address, email: connectedEmail, authType, connected, chainId, connect, connectEmail, switchToBsc, isAuthenticated, isLoggingIn, login } = useWallet();
+  const { address, email: connectedEmail, authType, connected, chainId, connect, switchToBsc, isAuthenticated, isLoggingIn, login } = useWallet();
+  const { login: privyLogin } = usePrivy();
 
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [devCode, setDevCode] = useState<string | null>(null);
-  const [emailState, setEmailState] = useState<'idle' | 'sent' | 'loading'>('idle');
-  const [emailError, setEmailError] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-
-  const embeddedWallet = useEmbeddedWallet();
-  const embeddedStatus = embeddedWalletConfigStatus();
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -82,31 +76,6 @@ export function WalletDrawer() {
       await login();
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Sign-in failed');
-    }
-  };
-
-  const sendCode = async () => {
-    setEmailState('loading');
-    setEmailError(null);
-    try {
-      const result = await requestEmailOtp(email);
-      setDevCode(result.devCode ?? null);
-      setEmailState('sent');
-    } catch (error) {
-      setEmailError(error instanceof Error ? error.message : 'Could not send login code');
-      setEmailState('idle');
-    }
-  };
-
-  const verifyCode = async () => {
-    setEmailState('loading');
-    setEmailError(null);
-    try {
-      const walletLink = await embeddedWallet.connectEmailWallet(email);
-      await connectEmail(email, code, walletLink);
-    } catch (error) {
-      setEmailError(error instanceof Error ? error.message : 'Email login failed');
-      setEmailState('sent');
     }
   };
 
@@ -299,83 +268,39 @@ export function WalletDrawer() {
             </button>
           )}
 
-          {/* Email login (only when Privy is configured) */}
-          {embeddedStatus.productionReady && !connected && (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-4)',
-                background: 'var(--bg-base)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {/* Email login */}
+          {!connected && (
+            <>
+              <div style={{ textAlign: 'center', margin: 'var(--space-2) 0' }}>
+                <span style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)' }}>— OR —</span>
+              </div>
+              <button
+                onClick={() => {
+                  closeDrawer();
+                  privyLogin();
+                }}
+                id="privy-login-btn"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-4)',
+                  background: 'var(--bg-base)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  width: '100%',
+                }}
+              >
                 <Mail size={22} />
                 <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Continue with Email</div>
-              </div>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                style={inputStyle}
-              />
-              {emailState === 'sent' && (
-                <input
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  placeholder="6-digit code"
-                  inputMode="numeric"
-                  style={inputStyle}
-                />
-              )}
-              {devCode && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--buy)' }}>
-                  Dev code: {devCode}
-                </div>
-              )}
-              {emailError && (
-                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--sell)' }}>
-                  {emailError}
-                </div>
-              )}
-              <button
-                onClick={emailState === 'sent' ? verifyCode : sendCode}
-                disabled={emailState === 'loading' || !email || (emailState === 'sent' && code.length !== 6)}
-                style={emailButtonStyle}
-              >
-                {emailState === 'loading' ? 'Working…' : emailState === 'sent' ? 'Verify Email' : 'Send Login Code'}
               </button>
-            </div>
+            </>
           )}
         </div>
       </div>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: 'var(--space-3)',
-  background: 'var(--bg-elevated)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  color: 'var(--text-primary)',
-  fontFamily: 'var(--font-ui)',
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
-const emailButtonStyle: React.CSSProperties = {
-  padding: 'var(--space-3)',
-  background: 'var(--brand)',
-  border: 'none',
-  borderRadius: 'var(--radius-sm)',
-  color: '#fff',
-  cursor: 'pointer',
-  fontFamily: 'var(--font-ui)',
-  fontWeight: 600,
-};

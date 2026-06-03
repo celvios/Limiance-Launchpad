@@ -9,7 +9,6 @@ import { calculateBuyPrice } from '@/lib/curve/math';
 import { formatAddress, formatNumber } from '@/lib/format';
 import { API_BASE_URL, BSC_CHAIN_ID, CHAIN_CURRENCY, DEX_NAME, PAYMENT_ASSET } from '@/lib/constants';
 import { useBuy } from '@/hooks/useTradeTransaction';
-import { pimlicoStatusLabel } from '@/lib/pimlico';
 import type { DepositAddress, TokenDetail } from '@/lib/types';
 
 interface TradePanelProps {
@@ -174,7 +173,7 @@ export function TradePanel({ token }: TradePanelProps) {
               <Row label="Receive estimate" value={`${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}`} />
               <Row label="Average price" value={`${buyEstimate.avgPrice.toFixed(8)} ${CHAIN_CURRENCY}`} />
               <Row label="Price impact" value={`${buyEstimate.priceImpact.toFixed(2)}%`} />
-              <Row label="Gas" value={pimlicoStatusLabel()} />
+              <Row label="Est. Network Fee" value="~0.005 BNB" />
             </div>
           )}
 

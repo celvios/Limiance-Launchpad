@@ -22,6 +22,8 @@ const LoginBody = z.object({
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/),
   timestamp: z.number().int().positive(),
+  smartAccountAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  email: z.string().email().optional(),
 });
 
 const RequestEmailBody = z.object({
@@ -69,33 +71,46 @@ export async function authRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const { walletAddress, signature, timestamp } = parsed.data;
+      const { walletAddress, signature, timestamp, smartAccountAddress, email } = parsed.data;
 
       // Reject stale or future-dated requests
       if (!isTimestampFresh(timestamp)) {
         return reply.code(400).send({ error: 'Request expired', code: 'EXPIRED' });
       }
       const normalizedWallet = walletAddress.toLowerCase();
+      const normalizedSmartAccount = smartAccountAddress ? smartAccountAddress.toLowerCase() : null;
+      
       const message = buildLoginMessage(timestamp);
       if (!verifyEvmPersonalSignature(normalizedWallet, message, signature)) {
         return reply.code(401).send({ error: 'Invalid wallet signature', code: 'INVALID_SIGNATURE' });
       }
       const user = await (prisma as any).user.upsert({
         where: { primaryWalletAddress: normalizedWallet },
-        update: {},
+        update: {
+          ...(email && { email }),
+          ...(normalizedSmartAccount && { smartAccountAddress: normalizedSmartAccount }),
+        },
         create: {
           primaryWalletAddress: normalizedWallet,
           authType: 'wallet',
+          ...(email && { email }),
+          ...(normalizedSmartAccount && { smartAccountAddress: normalizedSmartAccount }),
           wallets: {
-            create: {
-              walletAddress: normalizedWallet,
-              walletType: 'external',
-            },
+            create: [
+              {
+                walletAddress: normalizedWallet,
+                walletType: 'external',
+              },
+              ...(normalizedSmartAccount ? [{
+                walletAddress: normalizedSmartAccount,
+                walletType: 'pimlico_smart_account'
+              }] : [])
+            ],
           },
         },
       });
-      const token = signToken(normalizedWallet, { userId: user.id, authType: 'wallet' });
-      return reply.send({ token, wallet: normalizedWallet, userId: user.id, authType: 'wallet' });
+      const token = signToken(normalizedSmartAccount || normalizedWallet, { userId: user.id, authType: 'wallet' });
+      return reply.send({ token, wallet: normalizedSmartAccount || normalizedWallet, userId: user.id, authType: 'wallet' });
     }
   );
 
@@ -149,20 +164,14 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.code(401).send({ error: 'Invalid or expired login code', code: 'INVALID_OTP' });
       }
 
-      if (!parsed.data.embeddedSignerAddress || !parsed.data.smartAccountAddress) {
-        return reply.code(400).send({
-          error: 'Production email login requires an embedded signer address and Pimlico-backed smart account',
-          code: 'EMBEDDED_WALLET_REQUIRED',
-        });
-      }
-
-      const primaryWalletAddress = normalizeAddress(parsed.data.smartAccountAddress);
       const embeddedSignerAddress = parsed.data.embeddedSignerAddress
         ? normalizeAddress(parsed.data.embeddedSignerAddress)
         : null;
       const smartAccountAddress = parsed.data.smartAccountAddress
         ? normalizeAddress(parsed.data.smartAccountAddress)
         : null;
+
+      const primaryWalletAddress = smartAccountAddress || embeddedSignerAddress || `0xemail${crypto.randomBytes(16).toString('hex')}`;
 
       const user = await prisma.$transaction(async (tx: any) => {
         await tx.loginOtp.update({ where: { id: otp.id }, data: { consumed: true } });
