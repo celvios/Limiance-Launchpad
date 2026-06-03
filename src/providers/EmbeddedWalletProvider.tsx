@@ -5,7 +5,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useWallet } from './BscWalletProvider';
 import { getPimlicoSmartAccount } from '@/lib/pimlico';
 import { toViemAccount } from '@privy-io/react-auth';
-import { PRIVY_APP_ID } from '@/lib/constants';
+import { PRIVY_APP_ID, API_BASE_URL } from '@/lib/constants';
 
 function normalizeAddress(addr: string | null | undefined): string | null {
   return addr ? addr.toLowerCase() : null;
@@ -70,7 +70,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
           params: [message, wallet.address],
         });
 
-        const res = await fetch('/api/auth/login', {
+        const res = await fetch(`${API_BASE_URL}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -107,7 +107,9 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
 
       } catch (err) {
         console.error('Failed to setup smart account:', err);
-        if (isMounted) setError(err instanceof Error ? err.message : 'Failed to setup smart account');
+        const msg = err instanceof Error ? err.message : 'Failed to setup smart account';
+        alert(`Login Error: ${msg}`);
+        if (isMounted) setError(msg);
       } finally {
         if (isMounted) setIsLoading(false);
       }
