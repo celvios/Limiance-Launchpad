@@ -133,6 +133,7 @@ export function WalletDrawer() {
               color: 'var(--text-primary)',
               cursor: 'pointer',
               textAlign: 'left',
+              width: '100%',
             }}
           >
             <Wallet size={22} />
@@ -140,74 +141,65 @@ export function WalletDrawer() {
               <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
                 {connected ? 'Wallet Connected' : 'Connect EVM Wallet'}
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                {authType === 'wallet' && address ? address : 'MetaMask, Rabby, Trust Wallet, or injected wallet'}
-              </div>
+              {authType === 'wallet' && address && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  {address}
+                </div>
+              )}
             </div>
           </button>
 
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-4)',
-              background: 'var(--bg-base)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <Mail size={22} />
-              <div>
-                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
-                  Continue with Email
-                </div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Privy embedded wallet + Pimlico gasless account
-                </div>
+          {embeddedStatus.productionReady && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-4)',
+                background: 'var(--bg-base)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <Mail size={22} />
+                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Continue with Email</div>
               </div>
-            </div>
-
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              style={inputStyle}
-            />
-            {emailState === 'sent' && (
               <input
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                placeholder="6-digit code"
-                inputMode="numeric"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
                 style={inputStyle}
               />
-            )}
-            {devCode && (
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--buy)' }}>
-                Dev code: {devCode}
-              </div>
-            )}
-            {emailError && (
-              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--sell)' }}>
-                {emailError}
-              </div>
-            )}
-            {!embeddedStatus.productionReady && (
-              <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--sell)' }}>
-                Configure NEXT_PUBLIC_PRIVY_APP_ID, NEXT_PUBLIC_PIMLICO_BUNDLER_URL, and NEXT_PUBLIC_PIMLICO_PAYMASTER_URL before enabling production email wallets.
-              </div>
-            )}
-            <button
-              onClick={emailState === 'sent' ? verifyCode : sendCode}
-              disabled={emailState === 'loading' || !email || !embeddedStatus.productionReady || (emailState === 'sent' && code.length !== 6)}
-              style={emailButtonStyle}
-            >
-              {emailState === 'loading' ? 'Working...' : emailState === 'sent' ? 'Verify Email' : 'Send Login Code'}
-            </button>
-          </div>
+              {emailState === 'sent' && (
+                <input
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  placeholder="6-digit code"
+                  inputMode="numeric"
+                  style={inputStyle}
+                />
+              )}
+              {devCode && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--buy)' }}>
+                  Dev code: {devCode}
+                </div>
+              )}
+              {emailError && (
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--sell)' }}>
+                  {emailError}
+                </div>
+              )}
+              <button
+                onClick={emailState === 'sent' ? verifyCode : sendCode}
+                disabled={emailState === 'loading' || !email || (emailState === 'sent' && code.length !== 6)}
+                style={emailButtonStyle}
+              >
+                {emailState === 'loading' ? 'Working...' : emailState === 'sent' ? 'Verify Email' : 'Send Login Code'}
+              </button>
+            </div>
+          )}
 
           {wrongNetwork ? (
             <button
