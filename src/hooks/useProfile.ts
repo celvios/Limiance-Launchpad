@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { requireAuthToken } from '@/lib/session';
+import { useUIStore } from '@/store/uiStore';
 import {
   fetchProfile,
   updateProfile,

@@ -3,6 +3,7 @@ import { useWallet } from '@/providers/BscWalletProvider';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '@/lib/constants';
 import { requireAuthToken } from '@/lib/session';
+import { useUIStore } from '@/store/uiStore';
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false';
 const ONBOARDED_KEY = 'limiance-onboarded';
@@ -182,8 +183,11 @@ export function useOnboarding() {
         setNeedsOnboarding(false);
         return true;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Something went wrong';
+        const msg = err instanceof Error ? err.message : 'An error occurred while creating profile';
         setCreateError(msg);
+        if (msg.includes('Session expired')) {
+          useUIStore.getState().openWalletDrawer();
+        }
         return false;
       } finally {
         setCreating(false);
