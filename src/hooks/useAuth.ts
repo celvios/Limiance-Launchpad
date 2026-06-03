@@ -41,13 +41,9 @@ export function useAuth(): AuthState {
     setToken(null);
   }, [address]);
 
-  useEffect(() => {
-    if (connected && address && signMessage) login();
-  }, [connected, address, signMessage, login]);
-
-  useEffect(() => {
-    if (!connected && address) logout();
-  }, [connected, address, logout]);
+  // NOTE: We deliberately do NOT auto-call login() here.
+  // Triggering signMessage() on mount causes MetaMask to pop up unprovoked.
+  // Login is only initiated by explicit user action (e.g. clicking "Connect").
 
   return {
     isAuthenticated: !!token,

@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { BSC_CHAIN_ID, BSC_RPC_URL, GAS_CURRENCY } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
-import { verifyEmailOtp } from '@/lib/session';
+import { loginWithWallet, clearSession, verifyEmailOtp } from '@/lib/session';
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -68,18 +68,36 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as string[];
-    setAddress(normalizeAddress(accounts[0]));
+    const normalizedAddress = normalizeAddress(accounts[0]);
+    setAddress(normalizedAddress);
     setEmail(null);
     setAuthType('wallet');
     const rawChainId = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
     setChainId(Number.parseInt(rawChainId, 16));
+    // Trigger sign-in immediately after the user explicitly connected.
+    // This is the ONLY place we should prompt MetaMask for a signature.
+    if (normalizedAddress) {
+      try {
+        const signFn = async (msg: Uint8Array | string) => {
+          const text = typeof msg === 'string' ? msg : new TextDecoder().decode(msg);
+          return (await window.ethereum!.request({
+            method: 'personal_sign',
+            params: [text, normalizedAddress],
+          })) as string;
+        };
+        await loginWithWallet(normalizedAddress, signFn);
+      } catch {
+        // Non-fatal: user may have dismissed the signature. They can re-try.
+      }
+    }
   }, []);
 
   const disconnect = useCallback(() => {
+    if (address) clearSession(address);
     setAddress(null);
     setEmail(null);
     setAuthType(null);
-  }, []);
+  }, [address]);
 
   const connectEmail = useCallback(async (
     nextEmail: string,
