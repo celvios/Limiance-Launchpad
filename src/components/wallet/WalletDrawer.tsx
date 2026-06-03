@@ -124,17 +124,19 @@ export function WalletDrawer() {
       <div
         style={{
           position: 'absolute',
-          top: 0,
-          right: 0,
-          width: '380px',
-          maxWidth: '100vw',
-          height: '100vh',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '90vw',
+          maxWidth: '400px',
           background: 'var(--bg-card)',
-          borderLeft: '1px solid var(--border)',
-          animation: 'slideInRight 300ms var(--ease-default)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          animation: 'glassCardEnter 300ms var(--ease-default)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 1,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
         }}
       >
         {/* Header */}

@@ -8,15 +8,15 @@ import { useOnboardingStore } from '@/store/onboardingStore';
 import { OnboardingModal } from './OnboardingModal';
 
 export function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { connected } = useWallet();
+  const { isAuthenticated } = useWallet();
   const { needsOnboarding, profileLoading, checkProfile } = useOnboarding();
   const { isOnboardingOpen, setOnboardingOpen } = useUIStore();
   const { reset } = useOnboardingStore();
-  const prevConnectedRef = useRef(false);
+  const prevAuthRef = useRef(false);
 
-  // When wallet connects, check if profile exists
+  // When wallet authenticates, check if profile exists
   useEffect(() => {
-    if (connected && !prevConnectedRef.current) {
+    if (isAuthenticated && !prevAuthRef.current) {
       // Slight delay to let wallet drawer close first
       const timer = setTimeout(() => {
         checkProfile();
@@ -24,14 +24,14 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
       return () => clearTimeout(timer);
     }
 
-    if (!connected && prevConnectedRef.current) {
-      // Wallet disconnected — close onboarding if open
+    if (!isAuthenticated && prevAuthRef.current) {
+      // Wallet disconnected/logged out — close onboarding if open
       setOnboardingOpen(false);
       reset();
     }
 
-    prevConnectedRef.current = connected;
-  }, [connected, checkProfile, setOnboardingOpen, reset]);
+    prevAuthRef.current = isAuthenticated;
+  }, [isAuthenticated, checkProfile, setOnboardingOpen, reset]);
 
   // Open modal when we determine user needs onboarding
   useEffect(() => {
