@@ -3,7 +3,6 @@
 import React from 'react';
 import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { StepIdentity } from '@/components/create/StepIdentity';
-import { StepCurve } from '@/components/create/StepCurve';
 import { StepReview } from '@/components/create/StepReview';
 import { DeploySuccessModal } from '@/components/create/DeploySuccessModal';
 import { Button } from '@/components/ui/Button';
@@ -14,8 +13,7 @@ import type { CreateTokenStep } from '@/lib/types';
 
 const STEPS: { label: string; num: number }[] = [
   { label: 'Identity', num: 1 },
-  { label: 'Curve', num: 2 },
-  { label: 'Review', num: 3 },
+  { label: 'Review', num: 2 },
 ];
 
 export default function CreatePage() {
@@ -31,8 +29,6 @@ export default function CreatePage() {
   const handleNext = () => {
     if (currentStep === 0) {
       if (!validateStep1()) return;
-    } else if (currentStep === 1) {
-      if (!validateStep2()) return;
     }
     nextStep();
   };
@@ -176,12 +172,11 @@ export default function CreatePage() {
         key={currentStep} // re-mount to trigger animation
       >
         {currentStep === 0 && <StepIdentity />}
-        {currentStep === 1 && <StepCurve />}
-        {currentStep === 2 && <StepReview />}
+        {currentStep === 1 && <StepReview />}
       </div>
 
       {/* Navigation */}
-      {currentStep < 2 && (
+      {currentStep < 1 && (
         <div
           style={{
             display: 'flex',
@@ -211,7 +206,7 @@ export default function CreatePage() {
       )}
 
       {/* Back button on review step (deploy is inside StepReview) */}
-      {currentStep === 2 && !isDeploying && deployState !== 'success' && (
+      {currentStep === 1 && !isDeploying && deployState !== 'success' && (
         <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
           <Button variant="ghost" size="md" onClick={prevStep}>
             ← Back

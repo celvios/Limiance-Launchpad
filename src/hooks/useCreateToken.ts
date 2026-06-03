@@ -68,7 +68,7 @@ const INITIAL_ERRORS: CreateTokenValidation = {
 export const useCreateTokenStore = create<CreateTokenStore>((set, get) => ({
   currentStep: 0,
   setStep: (step) => set({ currentStep: step }),
-  nextStep: () => set((s) => ({ currentStep: Math.min(2, s.currentStep + 1) as CreateTokenStep })),
+  nextStep: () => set((s) => ({ currentStep: Math.min(1, s.currentStep + 1) as CreateTokenStep })),
   prevStep: () => set((s) => ({ currentStep: Math.max(0, s.currentStep - 1) as CreateTokenStep })),
 
   formData: { ...INITIAL_FORM_DATA },

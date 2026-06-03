@@ -6,9 +6,7 @@ import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { useUIStore } from '@/store/uiStore';
 import { useInitializeToken } from '@/hooks/useInitializeToken';
 import { calculatePrice } from '@/lib/curve/math';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { CurvePreviewChart } from './CurvePreviewChart';
 import { TOKEN_CREATION_FEE_USDT } from '@/lib/constants';
 
 /* ── Step 3 — Review & Deploy ── */
@@ -206,9 +204,6 @@ export function StepReview() {
 
           {/* Details grid */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <DetailRow label="Curve Type">
-              <Badge variant="curve">{formData.curveType.toUpperCase()}</Badge>
-            </DetailRow>
             <DetailRow label="Total Supply">
               {formData.totalSupply.toLocaleString()} tokens
             </DetailRow>
@@ -216,9 +211,6 @@ export function StepReview() {
               {formData.initialBuyAmount > 0 
                 ? `${formData.initialBuyAmount.toLocaleString()} tokens` 
                 : 'None'}
-            </DetailRow>
-            <DetailRow label="Graduation At">
-              {formData.graduationThreshold}% ({Math.floor(formData.totalSupply * formData.graduationThreshold / 100).toLocaleString()} tokens)
             </DetailRow>
             <DetailRow label="Creation Fee">
               {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT
@@ -272,13 +264,6 @@ export function StepReview() {
           </div>
         </div>
       </div>
-
-      {/* Mini curve preview */}
-      <CurvePreviewChart
-        curveParams={formData.curveParams}
-        totalSupply={formData.totalSupply}
-        graduationThreshold={formData.graduationThreshold}
-      />
 
       {/* Deploy cost estimate */}
       <div
