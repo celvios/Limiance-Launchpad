@@ -21,7 +21,7 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { address, connected } = useWallet();
+  const { address, connected, isAuthenticated } = useWallet();
   const { connection } = useConnection();
 
   const { data: balance } = useQuery({
@@ -151,7 +151,7 @@ export function Sidebar() {
             paddingTop: 'var(--space-4)',
           }}
         >
-          {connected && address ? (
+          {isAuthenticated && address ? (
             <div
               style={{
                 display: 'flex',
@@ -209,6 +209,3 @@ export function Sidebar() {
     </>
   );
 }
-
-
-

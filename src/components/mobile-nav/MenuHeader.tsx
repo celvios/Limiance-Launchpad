@@ -11,7 +11,7 @@ import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
 
 export function MenuHeader() {
-  const { connected, address } = useWallet();
+  const { isAuthenticated, connected, address } = useWallet();
   const { connection } = useConnection();
   const { addToast } = useUIStore();
 
@@ -39,7 +39,7 @@ export function MenuHeader() {
     }
   };
 
-  if (!connected || !address) {
+  if (!isAuthenticated || !address) {
     return (
       <div
         style={{
@@ -174,7 +174,3 @@ export function MenuHeader() {
     </div>
   );
 }
-
-
-
-

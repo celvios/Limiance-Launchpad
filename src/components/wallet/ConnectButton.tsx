@@ -2,9 +2,17 @@
 
 import React from 'react';
 import { useUIStore } from '@/store/uiStore';
+import { useWallet } from '@/providers/BscWalletProvider';
 
 export function ConnectButton() {
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
+  const { connected, isAuthenticated } = useWallet();
+
+  // If they are fully authenticated, this button shouldn't be rendered anyway,
+  // but if it is, we can say 'Connected'
+  if (isAuthenticated) return null;
+
+  const label = connected ? 'Sign In' : 'Connect Wallet';
 
   return (
     <button
@@ -16,7 +24,7 @@ export function ConnectButton() {
         justifyContent: 'center',
         height: '40px',
         padding: '0 var(--space-4)',
-        background: 'var(--brand)',
+        background: connected ? 'var(--buy)' : 'var(--brand)',
         border: 'none',
         borderRadius: 'var(--radius-md)',
         color: '#FFFFFF',
@@ -28,13 +36,13 @@ export function ConnectButton() {
         width: '100%',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--brand-hover)';
+        e.currentTarget.style.filter = 'brightness(1.1)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'var(--brand)';
+        e.currentTarget.style.filter = 'brightness(1)';
       }}
     >
-      Connect Wallet
+      {label}
     </button>
   );
 }
