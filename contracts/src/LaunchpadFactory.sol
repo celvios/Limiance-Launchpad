@@ -11,7 +11,6 @@ contract LaunchpadFactory {
     string name;
     string symbol;
     uint256 supplyCap;
-    uint256 creatorAllocation;
     uint256 graduationThreshold;
     uint256 pMin;
     uint256 pMax;
@@ -76,11 +75,10 @@ contract LaunchpadFactory {
     wrappedNative = initialWrappedNative;
   }
 
-  function createToken(LaunchConfig calldata config) external notPaused returns (address token, address sale) {
+  function createToken(LaunchConfig calldata config, uint256 initialBuyTokenAmount, uint256 maxUsdtPayment) external notPaused returns (address token, address sale) {
     require(bytes(config.name).length > 0, "NAME_REQUIRED");
     require(bytes(config.symbol).length > 0, "SYMBOL_REQUIRED");
     require(config.supplyCap > 0, "SUPPLY_REQUIRED");
-    require(config.creatorAllocation <= config.supplyCap / 10, "CREATOR_ALLOCATION_MAX_10");
 
     if (creationFee > 0) {
       require(IERC20(paymentAsset).transferFrom(msg.sender, feeRecipient, creationFee), "CREATION_FEE_FAILED");
@@ -92,8 +90,6 @@ contract LaunchpadFactory {
         config.name,
         config.symbol,
         config.supplyCap,
-        msg.sender,
-        config.creatorAllocation,
         address(this)
       )
     );
@@ -106,7 +102,7 @@ contract LaunchpadFactory {
         router,
         wrappedNative,
         msg.sender,
-        config.supplyCap - config.creatorAllocation,
+        config.supplyCap,
         config.graduationThreshold,
         config.pMin,
         config.pMax,
@@ -124,6 +120,13 @@ contract LaunchpadFactory {
     sales.push(sale);
     tokenToSale[token] = sale;
     emit TokenCreated(msg.sender, token, sale, config.symbol);
+
+    if (initialBuyTokenAmount > 0) {
+      (uint256 cost, uint256 fee) = BondingCurveSale(payable(sale)).quoteBuy(initialBuyTokenAmount);
+      require(cost + fee <= maxUsdtPayment, "SLIPPAGE");
+      require(IERC20(paymentAsset).transferFrom(msg.sender, sale, cost + fee), "INITIAL_BUY_FAILED");
+      BondingCurveSale(payable(sale)).buyFromVault(msg.sender, initialBuyTokenAmount);
+    }
   }
 
   function getOrCreateDepositVault(address user, address asset) external notPaused returns (address vault) {
@@ -151,9 +154,9 @@ contract LaunchpadFactory {
     require(sale != address(0), "SALE_REQUIRED");
     address vault = vaultForUserAsset[user][paymentAsset];
     require(vault != address(0), "VAULT_MISSING");
-    (uint256 cost, uint256 fee) = BondingCurveSale(sale).quoteBuy(tokenAmount);
-    DepositVault(vault).sweepToken(sale, cost + fee);
-    BondingCurveSale(sale).buyFromVault(recipient, tokenAmount);
+    (uint256 cost, uint256 fee) = BondingCurveSale(payable(sale)).quoteBuy(tokenAmount);
+    DepositVault(payable(vault)).sweepToken(sale, cost + fee);
+    BondingCurveSale(payable(sale)).buyFromVault(recipient, tokenAmount);
   }
 
   function buyFromNativeVault(
@@ -168,8 +171,8 @@ contract LaunchpadFactory {
     require(sale != address(0), "SALE_REQUIRED");
     address vault = vaultForUserAsset[user][paymentAsset];
     require(vault != address(0), "VAULT_MISSING");
-    DepositVault(vault).sweepNative(payable(address(this)), nativeAmount);
-    BondingCurveSale(sale).buyFromNativeVault{ value: nativeAmount }(
+    DepositVault(payable(vault)).sweepNative(payable(address(this)), nativeAmount);
+    BondingCurveSale(payable(sale)).buyFromNativeVault{ value: nativeAmount }(
       recipient,
       tokenAmount,
       minUsdtOut,
@@ -178,13 +181,13 @@ contract LaunchpadFactory {
   }
 
   function withdrawSaleFees(address sale) external onlyOwner returns (uint256 amount) {
-    amount = BondingCurveSale(sale).withdrawFees();
+    amount = BondingCurveSale(payable(sale)).withdrawFees();
   }
 
   function withdrawGraduationIncentives(
     address sale
   ) external onlyOwner returns (uint256 creatorAmount, uint256 platformAmount) {
-    (creatorAmount, platformAmount) = BondingCurveSale(sale).withdrawGraduationIncentives();
+    (creatorAmount, platformAmount) = BondingCurveSale(payable(sale)).withdrawGraduationIncentives();
   }
 
   function setPlatformFeeBps(uint256 feeBps) external onlyOwner {

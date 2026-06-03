@@ -351,7 +351,7 @@ export async function deployToken(
       description: data.description,
       imageUri: data.imageIpfsUri,
       totalSupply: data.totalSupply,
-      creatorAllocation: data.creatorAllocation,
+      initialBuyAmount: data.initialBuyAmount,
       curveType: data.curveType,
       curveParams: data.curveParams,
       graduationThreshold: data.graduationThreshold,

@@ -52,7 +52,22 @@ export function StepReview() {
     }
     const platformFee = totalRaised * 0.03;
 
-    return { startPrice, halfPrice, gradPrice, totalRaised, platformFee };
+    let initialBuyCost = 0;
+    if (formData.initialBuyAmount > 0) {
+      const initialSteps = 50;
+      const initialStepSize = formData.initialBuyAmount / initialSteps;
+      for (let i = 0; i < initialSteps; i++) {
+        const s1 = i * initialStepSize;
+        const s2 = (i + 1) * initialStepSize;
+        const p1 = calcP(s1);
+        const p2 = calcP(s2);
+        initialBuyCost += ((p1 + p2) / 2) * initialStepSize;
+      }
+    }
+    const initialBuyFee = initialBuyCost * 0.01; // 1% fee
+    const initialBuyTotalCost = initialBuyCost + initialBuyFee;
+
+    return { startPrice, halfPrice, gradPrice, totalRaised, platformFee, initialBuyTotalCost };
   }, [formData]);
 
   const handleDeploy = useCallback(async () => {
@@ -197,8 +212,10 @@ export function StepReview() {
             <DetailRow label="Total Supply">
               {formData.totalSupply.toLocaleString()} tokens
             </DetailRow>
-            <DetailRow label="Creator Allocation">
-              {formData.creatorAllocation}% ({Math.floor(formData.totalSupply * formData.creatorAllocation / 100).toLocaleString()} tokens)
+            <DetailRow label="Initial Buy">
+              {formData.initialBuyAmount > 0 
+                ? `${formData.initialBuyAmount.toLocaleString()} tokens` 
+                : 'None'}
             </DetailRow>
             <DetailRow label="Graduation At">
               {formData.graduationThreshold}% ({Math.floor(formData.totalSupply * formData.graduationThreshold / 100).toLocaleString()} tokens)
@@ -272,7 +289,9 @@ export function StepReview() {
           color: 'var(--text-muted)',
         }}
       >
-        Creation fee: {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT + BSC gas
+        Creation fee: {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT 
+        {formData.initialBuyAmount > 0 && ` + ~${simulation.initialBuyTotalCost.toFixed(2)} USDT (Initial Buy)`} 
+        + BSC gas
       </div>
 
       {/* Deploy Button */}

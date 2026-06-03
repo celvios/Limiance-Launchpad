@@ -12,7 +12,7 @@ const DeployBody = z.object({
   description: z.string().max(500).default(''),
   imageUri: z.string().default(''),
   totalSupply: z.number().int().positive(),
-  creatorAllocation: z.number().min(0).max(10),
+  initialBuyAmount: z.number().min(0).default(0),
   graduationThreshold: z.number().min(40).max(100),
   curveParams: z.object({
     pMin: z.number().optional(),
@@ -111,9 +111,9 @@ export async function tokenRoutes(app: FastifyInstance) {
         uri: body.imageUri,
         description: body.description,
         supplyCap,
-        currentSupply: 0n,
+        currentSupply: BigInt(body.initialBuyAmount) * 1_000_000_000_000_000_000n,
         graduationThreshold,
-        creatorAllocation: body.creatorAllocation,
+        creatorAllocation: 0,
         curveType: 'sigmoid',
         curveParamA: toWei(body.curveParams.pMax ?? 0.1),
         curveParamB: toWei(body.curveParams.pMin ?? 0.00001),
@@ -121,6 +121,25 @@ export async function tokenRoutes(app: FastifyInstance) {
         status: 'active',
       },
     });
+
+    if (body.initialBuyAmount > 0) {
+      await prisma.trade.create({
+        data: {
+          tokenMint: tokenAddress,
+          tokenAddress,
+          walletAddress: creator,
+          type: 'buy',
+          amount: BigInt(body.initialBuyAmount) * 1_000_000_000_000_000_000n,
+          solAmount: 0n, // Legacy
+          paymentAmount: 0n, // Approximated for simulation
+          paymentAsset: '0x0000000000000000000000000000000000000000',
+          pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
+          txSignature: `initial-buy-${token.id}`,
+          timestamp: new Date(),
+          isWhale: false,
+        },
+      });
+    }
 
     return reply.code(201).send({
       success: true,

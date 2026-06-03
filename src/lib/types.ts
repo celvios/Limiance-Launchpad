@@ -120,7 +120,7 @@ export interface CreateTokenFormData {
   symbol: string;
   description: string;
   totalSupply: number;
-  creatorAllocation: number; // 0–10 percentage
+  initialBuyAmount: number; // Amount of tokens creator wants to buy initially
 
   // Step 2 — Curve
   curveType: CurveType;

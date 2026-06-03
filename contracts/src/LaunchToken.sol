@@ -18,25 +18,17 @@ contract LaunchToken {
     string memory tokenName,
     string memory tokenSymbol,
     uint256 supply,
-    address creator,
-    uint256 creatorAllocation,
     address saleAddress
   ) {
     require(saleAddress != address(0), "SALE_REQUIRED");
-    require(creatorAllocation <= supply, "ALLOCATION_TOO_HIGH");
 
     name = tokenName;
     symbol = tokenSymbol;
     totalSupply = supply;
     sale = saleAddress;
 
-    uint256 saleAllocation = supply - creatorAllocation;
-    if (creatorAllocation > 0) {
-      balanceOf[creator] = creatorAllocation;
-      emit Transfer(address(0), creator, creatorAllocation);
-    }
-    balanceOf[saleAddress] = saleAllocation;
-    emit Transfer(address(0), saleAddress, saleAllocation);
+    balanceOf[saleAddress] = supply;
+    emit Transfer(address(0), saleAddress, supply);
   }
 
   function approve(address spender, uint256 amount) external returns (bool) {

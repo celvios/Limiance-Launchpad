@@ -292,28 +292,25 @@ export function StepIdentity() {
         />
       </div>
 
-      {/* Total Supply */}
+      {/* Initial Buy */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <label style={labelStyle}>
-            Total Supply <span style={{ color: 'var(--sell)' }}>*</span>
-          </label>
-          <Tooltip content="Maximum tokens that can ever be minted">
+          <label style={labelStyle}>Initial Buy (Optional)</label>
+          <Tooltip content="Amount of tokens you want to buy in the same transaction as creation">
             <Info size={14} style={{ color: 'var(--text-muted)', cursor: 'help' }} />
           </Tooltip>
         </div>
         <div style={{ position: 'relative' }}>
           <input
             type="number"
-            placeholder="100,000"
-            min={1000}
-            max={1000000000}
-            step={1000}
-            value={formData.totalSupply || ''}
+            placeholder="0"
+            min={0}
+            max={50000000} // e.g. 5% max initial buy
+            step={100000}
+            value={formData.initialBuyAmount || ''}
             onChange={(e) => {
               const val = Math.floor(Number(e.target.value));
-              updateFormData({ totalSupply: val });
-              if (errors.totalSupply) setError('totalSupply', null);
+              updateFormData({ initialBuyAmount: val });
             }}
             style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
           />
@@ -331,43 +328,6 @@ export function StepIdentity() {
             tokens
           </span>
         </div>
-        {errors.totalSupply && <div style={errorStyle}>{errors.totalSupply}</div>}
-      </div>
-
-      {/* Creator Allocation Slider */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <label style={labelStyle}>Creator Allocation</label>
-          <Tooltip content="Percentage of supply minted to your wallet at launch">
-            <Info size={14} style={{ color: 'var(--text-muted)', cursor: 'help' }} />
-          </Tooltip>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <input
-            type="range"
-            min={0}
-            max={10}
-            step={0.5}
-            value={formData.creatorAllocation}
-            onChange={(e) => updateFormData({ creatorAllocation: Number(e.target.value) })}
-            style={{
-              flex: 1,
-              accentColor: 'var(--buy)',
-            }}
-          />
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '14px',
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              minWidth: 40,
-              textAlign: 'right',
-            }}
-          >
-            {formData.creatorAllocation}%
-          </span>
-        </div>
         <span
           style={{
             fontFamily: 'var(--font-mono)',
@@ -377,9 +337,9 @@ export function StepIdentity() {
             display: 'block',
           }}
         >
-          {formData.totalSupply > 0
-            ? `${Math.floor(formData.totalSupply * formData.creatorAllocation / 100).toLocaleString()} tokens minted to you`
-            : ''}
+          {formData.initialBuyAmount > 0
+            ? `You will receive ${formData.initialBuyAmount.toLocaleString()} tokens.`
+            : 'No initial buy. Fair launch for everyone.'}
         </span>
       </div>
     </div>

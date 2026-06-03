@@ -49,7 +49,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
             description: formData.description,
             imageUri: formData.imageIpfsUri,
             totalSupply: formData.totalSupply,
-            creatorAllocation: formData.creatorAllocation,
+            initialBuyAmount: formData.initialBuyAmount,
             curveParams: formData.curveParams,
             graduationThreshold: formData.graduationThreshold,
           }),
