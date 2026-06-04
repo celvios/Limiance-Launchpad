@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { API_BASE_URL } from '@/lib/constants';
+import { API_BASE_URL, PAYMENT_ASSET } from '@/lib/constants';
 
 interface UserBalance {
   walletAddress: string;
@@ -32,19 +32,18 @@ export function useUserBalance() {
     refetchInterval: 8000,
   });
 
-  // ── Deposit address — fetched as soon as wallet + token are present ────────
+  // ── Deposit address — fetched as soon as wallet is present ────────
   const depositAddressQuery = useQuery({
     queryKey: ['depositAddress', wallet],
     queryFn: async (): Promise<string> => {
-      if (!wallet || !token) return '';
-      const res = await fetch(`${API_BASE_URL}/users/me/deposit-address`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!wallet) return '';
+      // We can use the public endpoint so wallet users don't need a JWT just to get their deposit address
+      const res = await fetch(`${API_BASE_URL}/deposits/address?wallet=${wallet}`);
       if (!res.ok) throw new Error('Failed to fetch deposit address');
       const data = await res.json();
       return data.vaultAddress ?? '';
     },
-    enabled: !!wallet && !!token,
+    enabled: !!wallet,
     staleTime: Infinity, // vault address never changes for a given wallet
     retry: 3,
   });
@@ -72,9 +71,9 @@ export function useUserBalance() {
     },
   });
 
-  // Sum all available USDT (zero address = platform USDT)
+  // Sum all available USDT using the correct PAYMENT_ASSET address
   const totalAvailableUSDT = balanceQuery.data
-    ?.filter((b) => b.asset === '0x0000000000000000000000000000000000000000')
+    ?.filter((b) => b.asset.toLowerCase() === PAYMENT_ASSET.toLowerCase())
     .reduce((acc, b) => acc + BigInt(b.available), 0n) ?? 0n;
 
   return {
