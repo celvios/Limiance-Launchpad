@@ -58,6 +58,11 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  const authTypeRef = React.useRef<'wallet' | 'email' | null>(null);
+  useEffect(() => {
+    authTypeRef.current = authType;
+  }, [authType]);
+
   // ── signMessage (defined early so login can reference it) ──
   const signMessage = useCallback(async (msg: Uint8Array | string) => {
     if (!window.ethereum || !address) throw new Error('Wallet not connected');
@@ -104,6 +109,9 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       window.ethereum.request({ method: 'eth_accounts' }) as Promise<string[]>,
       window.ethereum.request({ method: 'eth_chainId' }) as Promise<string>,
     ]);
+    
+    if (authTypeRef.current === 'email') return; // Do not override email session
+    
     const addr = normalizeAddress(accounts[0]);
     setAddress(addr);
     if (addr) {
@@ -197,6 +205,8 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!window.ethereum?.on) return;
     const handleAccounts = (accounts: unknown) => {
+      if (authTypeRef.current === 'email') return; // Do not let window.ethereum override embedded email sessions
+
       const next = Array.isArray(accounts) ? String(accounts[0] ?? '') : '';
       const addr = normalizeAddress(next);
       setAddress(addr);
