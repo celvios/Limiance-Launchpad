@@ -41,7 +41,7 @@ async function enrichComment(
   const [profile, hasUpvoted] = await Promise.all([
     prisma.profile.findUnique({
       where: { walletAddress: comment.walletAddress },
-      select: { usernameDisplay: true, username: true },
+      select: { usernameDisplay: true, username: true, profilePicUri: true },
     }),
     viewerWallet
       ? prisma.commentUpvote
@@ -62,6 +62,7 @@ async function enrichComment(
     tokenMint: comment.tokenMint,
     walletAddress: comment.walletAddress,
     walletHandle: profile ? (profile.usernameDisplay || profile.username) : null,
+    profilePicUri: profile?.profilePicUri || null,
     text: comment.message,
     upvotes: comment.upvotes,
     hasUpvoted,

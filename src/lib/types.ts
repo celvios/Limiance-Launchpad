@@ -185,6 +185,7 @@ export interface Comment {
   tokenMint: string;
   walletAddress: string;
   walletHandle: string | null;
+  profilePicUri?: string | null;
   text: string;
   upvotes: number;
   hasUpvoted: boolean; // relative to current user

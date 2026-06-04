@@ -44,9 +44,18 @@ export function CommentItem({ comment, onUpvote }: CommentItemProps) {
             fontFamily: 'var(--font-mono)',
             fontSize: '11px',
             color: 'var(--text-muted)',
+            overflow: 'hidden',
           }}
         >
-          {comment.walletAddress.slice(0, 2).toUpperCase()}
+          {comment.profilePicUri ? (
+            <img
+              src={comment.profilePicUri}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            comment.walletAddress.slice(0, 2).toUpperCase()
+          )}
         </div>
       </Link>
 

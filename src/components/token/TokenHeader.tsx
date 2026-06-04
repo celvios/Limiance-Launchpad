@@ -63,9 +63,18 @@ export function TokenHeader({ token }: TokenHeaderProps) {
             marginTop: -32,
             position: 'relative',
             zIndex: 2,
+            overflow: 'hidden',
           }}
         >
-          {token.symbol.slice(0, 2)}
+          {token.imageUri ? (
+            <img 
+              src={token.imageUri} 
+              alt={token.symbol} 
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+            />
+          ) : (
+            token.symbol.slice(0, 2)
+          )}
         </div>
 
         {/* Token name + symbol */}
@@ -118,15 +127,10 @@ export function TokenHeader({ token }: TokenHeaderProps) {
                 textDecoration: 'none',
               }}
             >
-              @{token.creatorHandle}
+              @{token.creatorHandle || `${token.creatorWallet.slice(0, 4)}...${token.creatorWallet.slice(-4)}`}
             </Link>{' '}
             · {formatTimeAgo(token.createdAt)}
           </span>
-
-          <FollowButton
-            walletAddress={token.creatorWallet}
-            isFollowing={false}
-          />
 
           <button
             style={{
