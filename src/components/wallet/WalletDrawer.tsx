@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback, useState } from 'react';
-import { X, Wallet, ShieldCheck, AlertTriangle, LogIn, CheckCircle, LogOut } from 'lucide-react';
+import { X, Wallet, ShieldCheck, AlertTriangle, LogIn, CheckCircle, LogOut, Mail } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { BSC_CHAIN_ID } from '@/lib/constants';
