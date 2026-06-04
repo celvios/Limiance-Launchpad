@@ -120,7 +120,7 @@ export function TradePanel({ token }: TradePanelProps) {
 
     setTxState('confirming');
     try {
-      const res = await fetch(`/api/tokens/${token.tokenAddress ?? token.mint}/trade`, {
+      const res = await fetch(`${API_BASE_URL}/tokens/${token.tokenAddress ?? token.mint}/trade`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

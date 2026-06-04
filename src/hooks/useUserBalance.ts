@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { useWallet } from '@/providers/BscWalletProvider';
+import { API_BASE_URL } from '@/lib/constants';
 
 interface UserBalance {
   walletAddress: string;
@@ -20,7 +21,7 @@ export function useUserBalance() {
     queryKey: ['userBalance', wallet],
     queryFn: async (): Promise<UserBalance[]> => {
       if (!wallet) return [];
-      const res = await fetch(`/api/deposits/balance/${wallet}`, {
+      const res = await fetch(`${API_BASE_URL}/deposits/balance/${wallet}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error('Failed to fetch balance');
@@ -35,7 +36,7 @@ export function useUserBalance() {
     queryKey: ['depositAddress', wallet],
     queryFn: async (): Promise<string> => {
       if (!wallet) return '';
-      const res = await fetch(`/api/users/me/deposit-address`, {
+      const res = await fetch(`${API_BASE_URL}/users/me/deposit-address`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error('Failed to fetch deposit address');
@@ -49,7 +50,7 @@ export function useUserBalance() {
   const testnetDepositMutation = useMutation({
     mutationFn: async ({ amount, txHash }: { amount: string; txHash: string }) => {
       if (!token) throw new Error('Not authenticated');
-      const res = await fetch('/api/deposits/testnet-credit', {
+      const res = await fetch(`${API_BASE_URL}/deposits/testnet-credit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ export function useUserBalance() {
   const withdrawMutation = useMutation({
     mutationFn: async ({ amount, destination }: { amount: string; destination: string }) => {
       if (!token) throw new Error('Not authenticated');
-      const res = await fetch('/api/deposits/withdraw', {
+      const res = await fetch(`${API_BASE_URL}/deposits/withdraw`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
