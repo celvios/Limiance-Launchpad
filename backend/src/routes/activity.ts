@@ -70,7 +70,7 @@ export async function activityRoutes(app: FastifyInstance) {
       type: t.type,
       walletAddress: t.walletAddress,
       walletHandle: handleMap.get(t.walletAddress) ?? null,
-      amount: Number(t.amount),
+      tokenAmount: Number(t.amount) / 1e6,
       solAmount: Number(t.solAmount) / 1e6,
       pricePerToken: Number(t.pricePerToken) / 1e18,
       txSignature: t.txSignature,
