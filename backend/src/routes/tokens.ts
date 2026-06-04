@@ -389,12 +389,21 @@ export async function tokenRoutes(app: FastifyInstance) {
             data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
           });
 
-          // Credit token balance (upsert)
-          await tx.userTokenBalance.upsert({
+          // Credit token balance
+          const existingTokenBal = await tx.userTokenBalance.findUnique({
             where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
-            create: { walletAddress: userWallet, tokenAddress: token.mint, amount: amountTokensWei },
-            update: { amount: { increment: amountTokensWei } },
           });
+          
+          if (existingTokenBal) {
+            await tx.userTokenBalance.update({
+              where: { id: existingTokenBal.id },
+              data: { amount: { increment: amountTokensWei } },
+            });
+          } else {
+            await tx.userTokenBalance.create({
+              data: { walletAddress: userWallet, tokenAddress: token.mint, amount: amountTokensWei },
+            });
+          }
 
           // Advance the bonding curve supply
           const newSupply = token.currentSupply + amountTokensWei;
