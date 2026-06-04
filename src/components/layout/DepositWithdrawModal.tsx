@@ -93,13 +93,30 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
     setWalletTxPending(true);
     try {
       const data = encodeERC20Transfer(depositAddress, amountWei);
+      
+      // Estimate gas first so we get a readable error if the user lacks USDT
+      try {
+        await (window as any).ethereum.request({
+          method: 'eth_estimateGas',
+          params: [{ from: address, to: USDT_ADDRESS, data }],
+        });
+      } catch (estError: any) {
+        throw new Error('Transaction will fail. Please ensure you have enough USDT in your wallet.');
+      }
+
       const txHash = await (window as any).ethereum.request({
         method: 'eth_sendTransaction',
         params: [{ from: address, to: USDT_ADDRESS, data }],
       });
       setWalletTxHash(txHash as string);
     } catch (err: any) {
-      setWalletTxError(err?.message ?? 'Transaction rejected');
+      // Clean up MetaMask's default RPC errors which are confusing
+      const msg = err?.message ?? 'Transaction rejected';
+      if (msg.includes('gas limit too high')) {
+        setWalletTxError('Transaction failed estimation. Ensure you have enough USDT.');
+      } else {
+        setWalletTxError(msg);
+      }
     } finally {
       setWalletTxPending(false);
     }
