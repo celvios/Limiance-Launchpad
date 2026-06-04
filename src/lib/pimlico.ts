@@ -26,6 +26,15 @@ export async function getPimlicoSmartAccount(signer: LocalAccount) {
     },
   });
 
+  console.log('[Pimlico] Checking if publicClient is working by getting chain ID...');
+  try {
+    const cid = await publicClient.getChainId();
+    console.log('[Pimlico] publicClient chain ID:', cid);
+  } catch (err) {
+    console.error('[Pimlico] publicClient getChainId failed:', err);
+  }
+
+  console.log('[Pimlico] Calling toSimpleSmartAccount with signer address:', signer.address);
   const simpleSmartAccount = await toSimpleSmartAccount({
     client: publicClient,
     owner: signer,
@@ -35,6 +44,7 @@ export async function getPimlicoSmartAccount(signer: LocalAccount) {
       version: '0.6',
     },
   });
+  console.log('[Pimlico] toSimpleSmartAccount succeeded!');
 
   const smartAccountClient = createSmartAccountClient({
     account: simpleSmartAccount,
