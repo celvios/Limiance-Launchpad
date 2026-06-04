@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Share2, Users } from 'lucide-react';
+import { Eye, Share2, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { WatchlistButton } from '@/components/social/WatchlistButton';
 import { formatTimeAgo } from '@/lib/format';
@@ -204,6 +204,10 @@ export function TokenHeader({ token }: TokenHeaderProps) {
           <Badge variant="default">
             <Users size={10} style={{ marginRight: 4 }} />
             {token.holderCount} holders
+          </Badge>
+          <Badge variant="default">
+            <Eye size={10} style={{ marginRight: 4 }} />
+            {token.watchCount ?? 0} watching
           </Badge>
         </div>
       </div>

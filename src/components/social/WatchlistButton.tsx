@@ -2,6 +2,10 @@
 
 import React, { useState } from 'react';
 import { Heart } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { addTokenToWatchlist, removeTokenFromWatchlist } from '@/lib/api';
+import { getAuthToken } from '@/lib/session';
+import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
 
 interface WatchlistButtonProps {
@@ -11,16 +15,38 @@ interface WatchlistButtonProps {
 
 export function WatchlistButton({ mint, size = 18 }: WatchlistButtonProps) {
   const { isWatching, toggle } = useWatchlistStore();
+  const { address } = useWallet();
+  const queryClient = useQueryClient();
   const [isAnimating, setIsAnimating] = useState(false);
   const watched = isWatching(mint);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const nextWatched = !watched;
     toggle(mint);
-    if (!watched) {
+    if (nextWatched) {
       setIsAnimating(true);
       setTimeout(() => setIsAnimating(false), 400);
+    }
+
+    const token = address ? getAuthToken(address) : null;
+    if (!address || !token) return;
+
+    try {
+      if (nextWatched) {
+        await addTokenToWatchlist(address, mint, token);
+      } else {
+        await removeTokenFromWatchlist(address, mint, token);
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feed'] }),
+        queryClient.invalidateQueries({ queryKey: ['token-detail', mint] }),
+        queryClient.invalidateQueries({ queryKey: ['explore'] }),
+      ]);
+    } catch (error) {
+      toggle(mint);
+      console.error('[WatchlistButton] Failed to sync watchlist:', error);
     }
   };
 

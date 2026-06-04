@@ -552,6 +552,56 @@ export async function unfollowUser(
   }
 }
 
+export async function addTokenToWatchlist(
+  walletAddress: string,
+  tokenMint: string,
+  token: string | null
+): Promise<void> {
+  if (USE_MOCK) {
+    await delay(150);
+    return;
+  }
+
+  const res = await authFetch(
+    `${API_BASE_URL}/watchlist`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress, tokenMint }),
+    },
+    token
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `API error: ${res.status}`);
+  }
+}
+
+export async function removeTokenFromWatchlist(
+  walletAddress: string,
+  tokenMint: string,
+  token: string | null
+): Promise<void> {
+  if (USE_MOCK) {
+    await delay(150);
+    return;
+  }
+
+  const res = await authFetch(
+    `${API_BASE_URL}/watchlist`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress, tokenMint }),
+    },
+    token
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `API error: ${res.status}`);
+  }
+}
+
 export async function fetchProfileTokens(
   walletAddress: string
 ): Promise<TokenCardData[]> {

@@ -41,7 +41,61 @@ function toWei(value: number): bigint {
   return BigInt(Math.round(value * 1e18));
 }
 
-function serializeToken(token: any, creatorHandle?: string | null) {
+interface TokenSocialCounts {
+  commentCount: number;
+  holderCount: number;
+  watchCount: number;
+}
+
+function emptyCounts(): TokenSocialCounts {
+  return { commentCount: 0, holderCount: 0, watchCount: 0 };
+}
+
+async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string, TokenSocialCounts>> {
+  const uniqueMints = [...new Set(tokenMints)].filter(Boolean);
+  const countMap = new Map(uniqueMints.map((mint) => [mint, emptyCounts()]));
+  if (uniqueMints.length === 0) return countMap;
+
+  const [commentCounts, watchCounts, holderRows] = await Promise.all([
+    prisma.comment.groupBy({
+      by: ['tokenMint'],
+      where: { tokenMint: { in: uniqueMints } },
+      _count: { _all: true },
+    }),
+    prisma.watchlist.groupBy({
+      by: ['tokenMint'],
+      where: { tokenMint: { in: uniqueMints } },
+      _count: { _all: true },
+    }),
+    prisma.trade.groupBy({
+      by: ['tokenMint', 'walletAddress'],
+      where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+    }),
+  ]);
+
+  for (const row of commentCounts) {
+    countMap.set(row.tokenMint, {
+      ...(countMap.get(row.tokenMint) ?? emptyCounts()),
+      commentCount: row._count._all,
+    });
+  }
+
+  for (const row of watchCounts) {
+    countMap.set(row.tokenMint, {
+      ...(countMap.get(row.tokenMint) ?? emptyCounts()),
+      watchCount: row._count._all,
+    });
+  }
+
+  for (const row of holderRows) {
+    const current = countMap.get(row.tokenMint) ?? emptyCounts();
+    countMap.set(row.tokenMint, { ...current, holderCount: current.holderCount + 1 });
+  }
+
+  return countMap;
+}
+
+function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
   const tokenAddress = token.tokenAddress ?? token.mint;
   const supply = Number(token.currentSupply.toString());
   const cap = Number(token.supplyCap.toString());
@@ -74,10 +128,11 @@ function serializeToken(token: any, creatorHandle?: string | null) {
     price: pMax,
     priceChange24h: 0,
     marketCap,
-    commentCount: 0,
+    commentCount: counts.commentCount,
+    watchCount: counts.watchCount,
     sparklineData: [],
     volume24h: 0,
-    holderCount: 0,
+    holderCount: counts.holderCount,
     totalSupply: cap,
     basePrice: pMin,
     platformFee: 3,
@@ -237,8 +292,10 @@ export async function tokenRoutes(app: FastifyInstance) {
     const profileMap = new Map(profiles.map((p) => [p.walletAddress, p.usernameDisplay || p.username]));
 
     const nextCursor = tokens.length > parsed.data.limit ? page[page.length - 1]?.createdAt.toISOString() : null;
+    const countMap = await fetchTokenSocialCounts(page.map((t) => t.mint));
+
     return reply.send({
-      tokens: page.map((t) => serializeToken(t, profileMap.get(t.creator))),
+      tokens: page.map((t) => serializeToken(t, profileMap.get(t.creator), countMap.get(t.mint))),
       nextCursor,
       total: page.length,
     });
@@ -259,7 +316,9 @@ export async function tokenRoutes(app: FastifyInstance) {
     const creatorHandle = profile ? (profile.usernameDisplay || profile.username) : null;
     const creatorPic = profile?.profilePicUri ?? null;
 
-    return reply.send({ ...serializeToken(token, creatorHandle), creatorPicUri: creatorPic });
+    const countMap = await fetchTokenSocialCounts([token.mint]);
+
+    return reply.send({ ...serializeToken(token, creatorHandle, countMap.get(token.mint)), creatorPicUri: creatorPic });
   });
 
   app.post('/api/tokens/:address/trade', async (req, reply) => {

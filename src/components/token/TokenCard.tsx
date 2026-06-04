@@ -2,11 +2,12 @@
 
 import React, { memo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { MessageCircle, Share2, ExternalLink } from 'lucide-react';
+import { Eye, MessageCircle, Share2, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Sparkline } from '@/components/token/Sparkline';
 import { WatchlistButton } from '@/components/social/WatchlistButton';
 import { formatNumber, formatTimeAgo } from '@/lib/format';
+import { ipfsToGateway } from '@/lib/pinata';
 import { useUIStore } from '@/store/uiStore';
 import type { TokenCardData } from '@/lib/types';
 
@@ -32,12 +33,14 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     currentSupply,
     graduationThreshold,
     commentCount,
+    watchCount = 0,
     status,
     index = 0,
   } = props;
 
   const { openModal } = useUIStore();
   const [isHovered, setIsHovered] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const [supplyWidth, setSupplyWidth] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -104,7 +107,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
             gap: 'var(--space-3)',
           }}
         >
-          {/* Token image placeholder */}
+          {/* Token image */}
           <div
             style={{
               width: 48,
@@ -123,7 +126,16 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
               overflow: 'hidden',
             }}
           >
-            {symbol.slice(0, 2)}
+            {props.imageUri && !imageFailed ? (
+              <img
+                src={ipfsToGateway(props.imageUri)}
+                alt={symbol}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              symbol.slice(0, 2)
+            )}
             {isNew && (
               <div
                 style={{
@@ -397,6 +409,21 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
             <MessageCircle size={14} />
             {commentCount}
           </button>
+          <span
+            title="Watching"
+            aria-label={`${watchCount} watching`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontFamily: 'var(--font-ui)',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <Eye size={14} />
+            {watchCount}
+          </span>
           <span
             style={{
               display: 'inline-flex',

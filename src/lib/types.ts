@@ -26,6 +26,7 @@ export interface TokenCardData {
   currentSupply: number;
   graduationThreshold: number;
   commentCount: number;
+  watchCount?: number;
   status: TokenStatus;
   holderCount: number;
   volume24h: number; // USDT
