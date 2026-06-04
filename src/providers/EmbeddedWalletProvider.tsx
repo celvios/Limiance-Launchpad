@@ -50,25 +50,31 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
 
       try {
         // Convert Privy wallet to Viem account
-        const provider = await wallet.getEthereumProvider();
+        console.log('[EmbeddedWallet] Setting up viem account...');
         const viemAccount = await toViemAccount({ wallet });
 
         // Derive Pimlico Smart Account
+        console.log('[EmbeddedWallet] Fetching Pimlico smart account...');
         const { smartAccountAddress: saAddr, smartAccountClient: saClient } = await getPimlicoSmartAccount(viemAccount);
         
         if (!isMounted) return;
         setSmartAccountAddress(saAddr);
         setSmartAccountClient(saClient);
 
+        console.log('[EmbeddedWallet] Getting Ethereum provider...');
+        const provider = await wallet.getEthereumProvider();
+
         // Authenticate with backend using the EOA to sign, but storing the SA
         const timestamp = Date.now();
         const message = `Limiance Launchpad\n\nSign to authenticate your BSC session.\n\nThis request will not trigger any blockchain transaction or cost gas.\n\nTimestamp: ${timestamp}`;
         
         // EOA signs the message
+        console.log('[EmbeddedWallet] Requesting personal_sign...');
         const signature = await provider.request({
           method: 'personal_sign',
           params: [message, wallet.address],
         });
+        console.log('[EmbeddedWallet] Received signature! Sending to backend...');
 
         const res = await fetch(`${API_BASE_URL}/auth/login`, {
           method: 'POST',
@@ -81,6 +87,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
             email: user?.email?.address,
           }),
         });
+        console.log('[EmbeddedWallet] Backend response status:', res.status);
 
         if (!res.ok) {
           throw new Error('Failed to authenticate with backend');
