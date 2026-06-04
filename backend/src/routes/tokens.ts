@@ -485,7 +485,17 @@ export async function tokenRoutes(app: FastifyInstance) {
           ? token.currentSupply + amountTokensRaw
           : token.currentSupply - amountTokensRaw;
 
-        return { trade, newSupply: finalSupply.toString(), graduated: type === 'buy' && finalSupply >= token.graduationThreshold };
+        return {
+          trade: {
+            ...trade,
+            amount: trade.amount.toString(),
+            solAmount: trade.solAmount.toString(),
+            paymentAmount: trade.paymentAmount?.toString() ?? null,
+            pricePerToken: trade.pricePerToken.toString(),
+          },
+          newSupply: finalSupply.toString(),
+          graduated: type === 'buy' && finalSupply >= token.graduationThreshold
+        };
       });
 
       return reply.send({ success: true, ...result });
