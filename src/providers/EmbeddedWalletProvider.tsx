@@ -7,6 +7,7 @@ import { getPimlicoSmartAccount } from '@/lib/pimlico';
 import { toViemAccount } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, API_BASE_URL } from '@/lib/constants';
 import { saveEmailSession, getAuthToken } from '@/lib/session';
+import { useRouter } from 'next/navigation';
 
 function normalizeAddress(addr: string | null | undefined): string | null {
   return addr ? addr.toLowerCase() : null;
@@ -25,7 +26,8 @@ const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(n
 export function EmbeddedWalletProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
-  const { connected, address } = useWallet();
+  const { connected, address, setEmbeddedSession } = useWallet();
+  const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
@@ -108,16 +110,19 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
             email: user?.email?.address || '',
             token: data.token,
           });
-          // Also save it for the smart account address just in case
           saveEmailSession({
             walletAddress: saAddr,
             email: user?.email?.address || '',
             token: data.token,
           });
           setHasLoggedIn(true);
-        }
 
-        window.location.reload();
+          // Inject address + token into BscWalletProvider so isAuthenticated becomes true
+          setEmbeddedSession(wallet.address, user?.email?.address || '', data.token);
+
+          // Redirect to home — OnboardingGate modal will auto-open if user needs onboarding
+          router.push('/');
+        }
 
       } catch (err) {
         console.error('Failed to setup smart account:', err);

@@ -37,6 +37,8 @@ interface BscWalletContextValue {
   isLoggingIn: boolean;
   login: () => Promise<void>;
   logout: () => void;
+  // For embedded wallet (Privy) login
+  setEmbeddedSession: (walletAddress: string, email: string, token: string) => void;
 }
 
 const BscWalletContext = createContext<BscWalletContextValue | null>(null);
@@ -155,6 +157,15 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     if (cached) setToken(cached);
   }, []);
 
+  const setEmbeddedSession = useCallback((walletAddress: string, email: string, token: string) => {
+    const addr = normalizeAddress(walletAddress);
+    setAddress(addr);
+    setEmail(email);
+    setAuthType('email');
+    setChainId(BSC_CHAIN_ID);
+    setToken(token);
+  }, []);
+
   const switchToBsc = useCallback(async () => {
     if (!window.ethereum) return;
     const chainIdHex = `0x${BSC_CHAIN_ID.toString(16)}`;
@@ -225,8 +236,9 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       isLoggingIn,
       login,
       logout,
+      setEmbeddedSession,
     }),
-    [address, email, authType, chainId, signMessage, connect, connectEmail, disconnect, switchToBsc, token, isLoggingIn, login, logout],
+    [address, email, authType, chainId, signMessage, connect, connectEmail, disconnect, switchToBsc, token, isLoggingIn, login, logout, setEmbeddedSession],
   );
 
   return (
