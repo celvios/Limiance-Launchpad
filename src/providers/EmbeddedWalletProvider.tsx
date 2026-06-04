@@ -117,8 +117,9 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
           });
           setHasLoggedIn(true);
 
-          // Inject address + token into BscWalletProvider so isAuthenticated becomes true
-          setEmbeddedSession(wallet.address, user?.email?.address || '', data.token);
+          // Inject the SMART ACCOUNT address into BscWalletProvider (not EOA).
+          // The JWT is signed for saAddr, so walletAddress in profile creation must match.
+          setEmbeddedSession(saAddr, user?.email?.address || '', data.token);
 
           // Redirect to home — OnboardingGate modal will auto-open if user needs onboarding
           router.push('/');
