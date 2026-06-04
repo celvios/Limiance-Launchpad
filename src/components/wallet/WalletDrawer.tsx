@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback, useState } from 'react';
-import { X, Wallet, ShieldCheck, AlertTriangle, Mail, LogIn, CheckCircle } from 'lucide-react';
+import { X, Wallet, ShieldCheck, AlertTriangle, LogIn, CheckCircle, LogOut } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { BSC_CHAIN_ID } from '@/lib/constants';
@@ -13,7 +13,7 @@ import { usePrivy } from '@privy-io/react-auth';
 export function WalletDrawer() {
   const isOpen = useUIStore((s) => s.isWalletDrawerOpen);
   const closeDrawer = useUIStore((s) => s.closeWalletDrawer);
-  const { address, email: connectedEmail, authType, connected, chainId, connect, switchToBsc, isAuthenticated, isLoggingIn, login } = useWallet();
+  const { address, email: connectedEmail, authType, connected, chainId, connect, switchToBsc, isAuthenticated, isLoggingIn, login, logout } = useWallet();
   const { login: privyLogin, authenticated: privyAuthenticated, logout: privyLogout } = usePrivy();
 
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -266,6 +266,38 @@ export function WalletDrawer() {
                 </div>
               </div>
             </button>
+          )}
+
+          {/* Disconnect */}
+          {connected && (
+            <div style={{ marginTop: 'auto', paddingTop: 'var(--space-4)' }}>
+              <button
+                onClick={async () => {
+                  logout();
+                  if (privyAuthenticated) {
+                    try {
+                      await privyLogout();
+                    } catch (e) {}
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-4)',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  width: '100%',
+                }}
+              >
+                <LogOut size={20} />
+                <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Disconnect</div>
+              </button>
+            </div>
           )}
 
           {/* Email login */}
