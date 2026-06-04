@@ -127,7 +127,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     return () => {
       isMounted = false;
     };
-  }, [ready, authenticated, user, wallets, connected, isLoading]);
+  }, [ready, authenticated, user, wallets, connected]); // Removed isLoading to prevent self-cancelling
 
   return (
     <EmbeddedWalletContext.Provider
