@@ -365,115 +365,119 @@ export async function tokenRoutes(app: FastifyInstance) {
     const amountUsdtWei  = BigInt(Math.round(amountUsdt   * 1e6));
     const amountTokensWei = BigInt(Math.round(amountTokens * 1e18));
 
-    const result = await prisma.$transaction(async (tx: any) => {
-      const token = await tx.token.findFirst({
-        where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
-      });
-      if (!token) throw new Error('Token not found');
-      if (token.status !== 'active') throw new Error('Token is not active for trading');
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        const token = await tx.token.findFirst({
+          where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+        });
+        if (!token) throw new Error('Token not found');
+        if (token.status !== 'active') throw new Error('Token is not active for trading');
 
-      const usdtBalance = await tx.userBalance.findFirst({
-        where: { walletAddress: userWallet, asset: PAYMENT_ASSET },
-      });
+        const usdtBalance = await tx.userBalance.findFirst({
+          where: { walletAddress: userWallet, asset: PAYMENT_ASSET },
+        });
 
-      if (type === 'buy') {
-        // ── BUY ──────────────────────────────────────────────────────────────
-        if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
-          throw new Error('Insufficient USDT balance — please deposit more');
+        if (type === 'buy') {
+          // ── BUY ──────────────────────────────────────────────────────────────
+          if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
+            throw new Error('Insufficient USDT balance — please deposit more');
+          }
+
+          // Deduct USDT
+          await tx.userBalance.update({
+            where: { id: usdtBalance.id },
+            data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
+          });
+
+          // Credit token balance (upsert)
+          await tx.userTokenBalance.upsert({
+            where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+            create: { walletAddress: userWallet, tokenAddress: token.mint, amount: amountTokensWei },
+            update: { amount: { increment: amountTokensWei } },
+          });
+
+          // Advance the bonding curve supply
+          const newSupply = token.currentSupply + amountTokensWei;
+          const willGraduate = newSupply >= token.graduationThreshold;
+          await tx.token.update({
+            where: { id: token.id },
+            data: {
+              currentSupply: newSupply,
+              // NOTE: when status becomes 'graduating', a separate job should execute
+              // the bulk buyFromVault on-chain, add liquidity, and mark as 'graduated'.
+              status: willGraduate ? 'graduating' : 'active',
+            },
+          });
+
+        } else {
+          // ── SELL ─────────────────────────────────────────────────────────────
+          const tokenBalance = await tx.userTokenBalance.findUnique({
+            where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+          });
+          if (!tokenBalance || tokenBalance.amount < amountTokensWei) {
+            throw new Error('Insufficient token balance to sell');
+          }
+
+          // Deduct token balance
+          await tx.userTokenBalance.update({
+            where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+            data: { amount: { decrement: amountTokensWei } },
+          });
+
+          // Credit USDT — upsert in case user somehow has no USDT row
+          if (usdtBalance) {
+            await tx.userBalance.update({
+              where: { id: usdtBalance.id },
+              data: { available: { increment: amountUsdtWei } },
+            });
+          } else {
+            await tx.userBalance.create({
+              data: {
+                walletAddress: userWallet,
+                chainId: BSC_CHAIN_ID,
+                asset: PAYMENT_ASSET,
+                available: amountUsdtWei,
+              },
+            });
+          }
+
+          // Roll back the bonding curve supply
+          const newSupply = token.currentSupply - amountTokensWei;
+          await tx.token.update({
+            where: { id: token.id },
+            data: { currentSupply: newSupply > 0n ? newSupply : 0n },
+          });
         }
 
-        // Deduct USDT
-        await tx.userBalance.update({
-          where: { id: usdtBalance.id },
-          data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
-        });
-
-        // Credit token balance (upsert)
-        await tx.userTokenBalance.upsert({
-          where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
-          create: { walletAddress: userWallet, tokenAddress: token.mint, amount: amountTokensWei },
-          update: { amount: { increment: amountTokensWei } },
-        });
-
-        // Advance the bonding curve supply
-        const newSupply = token.currentSupply + amountTokensWei;
-        const willGraduate = newSupply >= token.graduationThreshold;
-        await tx.token.update({
-          where: { id: token.id },
+        // Record trade activity
+        const trade = await tx.trade.create({
           data: {
-            currentSupply: newSupply,
-            // NOTE: when status becomes 'graduating', a separate job should execute
-            // the bulk buyFromVault on-chain, add liquidity, and mark as 'graduated'.
-            status: willGraduate ? 'graduating' : 'active',
+            tokenMint: token.mint,
+            tokenAddress: token.tokenAddress,
+            walletAddress: userWallet,
+            type,
+            amount: amountTokensWei,
+            solAmount: amountUsdtWei,
+            paymentAmount: amountUsdtWei,
+            paymentAsset: PAYMENT_ASSET,
+            pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
+            txSignature: `internal-${type}-${Date.now()}`,
+            timestamp: new Date(),
+            isWhale: amountUsdt >= 1000,
           },
         });
 
-      } else {
-        // ── SELL ─────────────────────────────────────────────────────────────
-        const tokenBalance = await tx.userTokenBalance.findUnique({
-          where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
-        });
-        if (!tokenBalance || tokenBalance.amount < amountTokensWei) {
-          throw new Error('Insufficient token balance to sell');
-        }
+        const finalSupply = type === 'buy'
+          ? token.currentSupply + amountTokensWei
+          : token.currentSupply - amountTokensWei;
 
-        // Deduct token balance
-        await tx.userTokenBalance.update({
-          where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
-          data: { amount: { decrement: amountTokensWei } },
-        });
-
-        // Credit USDT — upsert in case user somehow has no USDT row
-        if (usdtBalance) {
-          await tx.userBalance.update({
-            where: { id: usdtBalance.id },
-            data: { available: { increment: amountUsdtWei } },
-          });
-        } else {
-          await tx.userBalance.create({
-            data: {
-              walletAddress: userWallet,
-              chainId: BSC_CHAIN_ID,
-              asset: PAYMENT_ASSET,
-              available: amountUsdtWei,
-            },
-          });
-        }
-
-        // Roll back the bonding curve supply
-        const newSupply = token.currentSupply - amountTokensWei;
-        await tx.token.update({
-          where: { id: token.id },
-          data: { currentSupply: newSupply > 0n ? newSupply : 0n },
-        });
-      }
-
-      // Record trade activity
-      const trade = await tx.trade.create({
-        data: {
-          tokenMint: token.mint,
-          tokenAddress: token.tokenAddress,
-          walletAddress: userWallet,
-          type,
-          amount: amountTokensWei,
-          solAmount: amountUsdtWei,
-          paymentAmount: amountUsdtWei,
-          paymentAsset: PAYMENT_ASSET,
-          pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
-          txSignature: `internal-${type}-${Date.now()}`,
-          timestamp: new Date(),
-          isWhale: amountUsdt >= 1000,
-        },
+        return { trade, newSupply: finalSupply.toString(), graduated: type === 'buy' && finalSupply >= token.graduationThreshold };
       });
 
-      const finalSupply = type === 'buy'
-        ? token.currentSupply + amountTokensWei
-        : token.currentSupply - amountTokensWei;
-
-      return { trade, newSupply: finalSupply.toString(), graduated: type === 'buy' && finalSupply >= token.graduationThreshold };
-    });
-
-    return reply.send({ success: true, ...result });
+      return reply.send({ success: true, ...result });
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message, code: 'TRADE_ERROR' });
+    }
   });
 
   // ── GET /api/tokens/:address/my-balance ─────────────────────────────────────
