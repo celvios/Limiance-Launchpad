@@ -41,7 +41,7 @@ function toWei(value: number): bigint {
   return BigInt(Math.round(value * 1e18));
 }
 
-function serializeToken(token: any) {
+function serializeToken(token: any, creatorHandle?: string | null) {
   const tokenAddress = token.tokenAddress ?? token.mint;
   const supply = Number(token.currentSupply.toString());
   const cap = Number(token.supplyCap.toString());
@@ -57,7 +57,7 @@ function serializeToken(token: any) {
     imageUri: token.uri,
     description: token.description,
     creatorWallet: token.creator,
-    creatorHandle: null,
+    creatorHandle: creatorHandle ?? null,
     createdAt: token.createdAt.getTime(),
     curveType: 'sigmoid',
     curveParams: {
@@ -227,8 +227,21 @@ export async function tokenRoutes(app: FastifyInstance) {
       take: parsed.data.limit + 1,
     });
     const page = tokens.slice(0, parsed.data.limit);
+
+    // Batch-fetch profiles for all creators
+    const creatorAddresses = [...new Set(page.map((t) => t.creator))];
+    const profiles = await prisma.profile.findMany({
+      where: { walletAddress: { in: creatorAddresses } },
+      select: { walletAddress: true, usernameDisplay: true, username: true },
+    });
+    const profileMap = new Map(profiles.map((p) => [p.walletAddress, p.usernameDisplay || p.username]));
+
     const nextCursor = tokens.length > parsed.data.limit ? page[page.length - 1]?.createdAt.toISOString() : null;
-    return reply.send({ tokens: page.map(serializeToken), nextCursor, total: page.length });
+    return reply.send({
+      tokens: page.map((t) => serializeToken(t, profileMap.get(t.creator))),
+      nextCursor,
+      total: page.length,
+    });
   });
 
   app.get('/api/tokens/:address', async (req, reply) => {
@@ -238,6 +251,14 @@ export async function tokenRoutes(app: FastifyInstance) {
       where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
     });
     if (!token) return reply.code(404).send({ error: 'Token not found', code: 'NOT_FOUND' });
-    return reply.send(serializeToken(token));
+
+    const profile = await prisma.profile.findUnique({
+      where: { walletAddress: token.creator },
+      select: { usernameDisplay: true, username: true, profilePicUri: true },
+    });
+    const creatorHandle = profile ? (profile.usernameDisplay || profile.username) : null;
+    const creatorPic = profile?.profilePicUri ?? null;
+
+    return reply.send({ ...serializeToken(token, creatorHandle), creatorPicUri: creatorPic });
   });
 }

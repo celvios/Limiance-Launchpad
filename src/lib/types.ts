@@ -16,6 +16,7 @@ export interface TokenCardData {
   description: string;
   creatorWallet: string;
   creatorHandle: string;
+  creatorPicUri?: string | null;
   createdAt: number; // unix ms
   curveType: CurveType;
   price: number; // USDT

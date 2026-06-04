@@ -114,6 +114,9 @@ export function TokenHeader({ token }: TokenHeaderProps) {
         >
           <span
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
               fontFamily: 'var(--font-ui)',
               fontSize: '14px',
               color: 'var(--text-secondary)',
@@ -123,10 +126,38 @@ export function TokenHeader({ token }: TokenHeaderProps) {
             <Link
               href={`/profile/${token.creatorWallet}`}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
                 color: 'var(--text-primary)',
                 textDecoration: 'none',
               }}
             >
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  background: 'var(--bg-elevated)',
+                  overflow: 'hidden',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                {token.creatorPicUri ? (
+                  <img 
+                    src={token.creatorPicUri} 
+                    alt="" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                ) : (
+                  <span style={{ fontSize: '8px', color: 'var(--text-muted)' }}>
+                    {token.creatorWallet.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+              </div>
               @{token.creatorHandle || `${token.creatorWallet.slice(0, 4)}...${token.creatorWallet.slice(-4)}`}
             </Link>{' '}
             · {formatTimeAgo(token.createdAt)}
