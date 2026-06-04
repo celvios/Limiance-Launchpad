@@ -371,7 +371,10 @@ export async function tokenRoutes(app: FastifyInstance) {
           where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
         });
         if (!token) throw new Error('Token not found');
-        if (token.status !== 'active') throw new Error('Token is not active for trading');
+        // Allow trading on 'active' and 'graduating' tokens (graduation is async)
+        if (token.status !== 'active' && token.status !== 'graduating') {
+          throw new Error(`Token is not available for trading (status: ${token.status})`);
+        }
 
         const usdtBalance = await tx.userBalance.findFirst({
           where: { walletAddress: userWallet, asset: PAYMENT_ASSET },
@@ -510,5 +513,29 @@ export async function tokenRoutes(app: FastifyInstance) {
     });
 
     return reply.send({ amount: tokenBalance?.amount.toString() ?? '0' });
+  });
+
+  // ── POST /api/admin/tokens/:address/reset-status ─────────────────────────────
+  // Admin-only: resets a stuck token back to 'active' for testing/recovery.
+  app.post('/api/admin/tokens/:address/reset-status', async (req, reply) => {
+    const secret = (req.headers['x-admin-secret'] as string) ?? '';
+    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const { address: tokenAddressParam } = req.params as { address: string };
+    const tokenAddress = tokenAddressParam.toLowerCase();
+
+    const token = await prisma.token.findFirst({
+      where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+    });
+    if (!token) return reply.code(404).send({ error: 'Token not found' });
+
+    const updated = await prisma.token.update({
+      where: { id: token.id },
+      data: { status: 'active' },
+    });
+
+    return reply.send({ success: true, id: updated.id, status: updated.status });
   });
 }
