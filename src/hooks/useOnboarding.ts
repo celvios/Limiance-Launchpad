@@ -2,10 +2,9 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '@/lib/constants';
-import { requireAuthToken } from '@/lib/session';
 import { useUIStore } from '@/store/uiStore';
 
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'false';
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true'; // Only mock when explicitly enabled
 const ONBOARDED_KEY = 'limiance-onboarded';
 
 /* ── Helpers ── */
@@ -48,7 +47,7 @@ export type UsernameStatus =
 /* ── Hook ── */
 
 export function useOnboarding() {
-  const { address } = useWallet();
+  const { address, token: walletToken } = useWallet();
   const queryClient = useQueryClient();
   const walletAddress = address ?? '';
 
@@ -58,6 +57,12 @@ export function useOnboarding() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const checkedRef = useRef(false);
+  // Reset the checked flag whenever the wallet address changes (reconnect, switch accounts)
+  const prevAddressRef = useRef<string>('');
+  if (prevAddressRef.current !== walletAddress) {
+    prevAddressRef.current = walletAddress;
+    checkedRef.current = false;
+  }
 
   /* ── Check if wallet needs onboarding ── */
   const checkProfile = useCallback(async () => {
@@ -155,16 +160,20 @@ export function useOnboarding() {
           await delay(1200);
           markWalletOnboarded(walletAddress);
         } else {
-          const token = requireAuthToken(walletAddress);
+          // Use the live token from BscWalletProvider state — never rely on localStorage
+          const token = walletToken;
+          if (!token) {
+            throw new Error('Session expired — please reconnect your wallet.');
+          }
 
           const res = await fetch(`${API_BASE_URL}/profiles`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              walletAddress,
+              walletAddress: walletAddress.toLowerCase(),
               username: params.username,
               profilePicUri: params.profilePicUri,
               coverUri: params.coverUri,
@@ -172,8 +181,11 @@ export function useOnboarding() {
           });
 
           if (!res.ok) {
-            const err = (await res.json()) as { error: string };
-            throw new Error(err.error || 'Failed to create profile');
+            const err = (await res.json().catch(() => ({ error: `Server error ${res.status}` }))) as { error: string };
+            if (res.status === 429) {
+              throw new Error('Too many attempts. Please wait a minute and try again.');
+            }
+            throw new Error(err.error || `Failed to create profile (${res.status})`);
           }
         }
 

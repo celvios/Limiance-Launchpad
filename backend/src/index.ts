@@ -46,9 +46,18 @@ async function main() {
 
   await app.register(rateLimit, {
     global: true,
-    max: 100,
+    max: 300,
     timeWindow: '1 minute',
-    keyGenerator: (req) => req.ip,
+    keyGenerator: (req) => {
+      // Prefer per-user keying via JWT so shared Render/Vercel IPs don't collide
+      const auth = req.headers.authorization;
+      if (auth?.startsWith('Bearer ')) {
+        const token = auth.slice(7).trim();
+        // Use first 16 chars of token as a cheap stable key (not a security concern — just routing)
+        return `jwt:${token.slice(0, 32)}`;
+      }
+      return req.ip;
+    },
   });
 
   await app.register(multipart, {
