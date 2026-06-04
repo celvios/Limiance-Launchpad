@@ -38,7 +38,8 @@ export async function runIndexer() {
       for (const log of logs) {
         if (!('args' in log)) continue; // Ensure it's an EventLog
         const toAddress = normalizeAddress(log.args[1]);
-        const amountWei = BigInt(log.args[2]);
+        // BSC USDT is 18 decimals, but our internal DB uses 6 decimals.
+        const amountWei = BigInt(log.args[2]) / 1000000000000n;
 
         // Check if the recipient 'toAddress' is one of our tracked DepositVaults
         const vault = await prisma.depositAddress.findFirst({

@@ -87,7 +87,8 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   // Wallet users: send USDT directly from their wallet to the vault address
   const handleWalletSend = async () => {
     if (!amount || !depositAddress || !address) return;
-    const amountWei = BigInt(Math.round(parsedAmount * 1e6)); // USDT = 6 decimals
+    // MockUSDT is 18 decimals on-chain!
+    const amountWei = BigInt(Math.floor(parsedAmount * 1e6)) * 1000000000000n;
     setWalletTxError(null);
     setWalletTxHash(null);
     setWalletTxPending(true);
@@ -139,19 +140,25 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   };
 
   const handleMintMockUsdt = async () => {
+    if (!address) return;
     setWalletTxError(null);
+    setWalletTxPending(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/deposits/mock-credit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+      // Encode faucet(uint256) with 10,000 * 10^18
+      const selector = '57915897';
+      const amountToMint = BigInt(10000) * 1000000000000000000n;
+      const paddedAmount = amountToMint.toString(16).padStart(64, '0');
+      const data = `0x${selector}${paddedAmount}`;
+
+      const txHash = await (window as any).ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: address, to: USDT_ADDRESS, data }],
       });
-      if (!res.ok) throw new Error('Failed to mint mock USDT');
-      // The polling effect will automatically detect the balance increase and go to step 3
+      setWalletTxHash(txHash as string);
     } catch (err: any) {
       setWalletTxError(err?.message ?? 'Failed to mint test funds');
+    } finally {
+      setWalletTxPending(false);
     }
   };
 
