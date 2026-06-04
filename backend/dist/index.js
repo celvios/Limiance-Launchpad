@@ -22,6 +22,8 @@ const deposits_1 = require("./routes/deposits");
 const prisma_1 = require("./services/prisma");
 const production_1 = require("./services/production");
 const server_1 = require("./ws/server");
+const indexer_1 = require("./services/indexer");
+const hotWallet_1 = require("./services/hotWallet");
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const IS_DEV = process.env.NODE_ENV !== 'production';
 async function main() {
@@ -90,6 +92,11 @@ async function main() {
         await app.listen({ port: PORT, host: '0.0.0.0' });
         app.log.info(`API server running on http://0.0.0.0:${PORT}`);
         app.log.info(`WebSocket: ws://0.0.0.0:${PORT}/ws`);
+        // Start background workers
+        if (IS_DEV || process.env.RUN_WORKERS === 'true') {
+            (0, indexer_1.runIndexer)().catch(err => app.log.error('Indexer failed', err));
+            (0, hotWallet_1.runHotWalletWorker)().catch(err => app.log.error('Hot Wallet failed', err));
+        }
     }
     catch (err) {
         app.log.error(err);

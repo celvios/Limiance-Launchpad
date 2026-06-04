@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { Settings, Award, ExternalLink } from 'lucide-react';
+import { Settings, Award, ExternalLink, Wallet } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -162,6 +162,18 @@ export default function ProfilePage() {
               >
                 <Settings size={14} />
                 Edit Profile
+              </Button>
+            )}
+
+            {isOwnProfile && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openModal('deposit')}
+                style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+              >
+                <Wallet size={14} />
+                Deposit
               </Button>
             )}
           </div>

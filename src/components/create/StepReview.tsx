@@ -5,16 +5,20 @@ import { useWallet } from '@/providers/BscWalletProvider';
 import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { useUIStore } from '@/store/uiStore';
 import { useInitializeToken } from '@/hooks/useInitializeToken';
+import { useUserBalance } from '@/hooks/useUserBalance';
 import { calculatePrice } from '@/lib/curve/math';
 import { Button } from '@/components/ui/Button';
 import { TOKEN_CREATION_FEE_USDT } from '@/lib/constants';
+import { AlertTriangle, CheckCircle, Wallet } from 'lucide-react';
 
 /* ── Step 3 — Review & Deploy ── */
 
 export function StepReview() {
   const { connected } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
+  const openModal = useUIStore((s) => s.openModal);
   const addToast = useUIStore((s) => s.addToast);
+  const { totalAvailableUSDT } = useUserBalance();
   const {
     formData,
     deployState,
@@ -114,14 +118,24 @@ export function StepReview() {
   }, [connected, openWalletDrawer, formData, setDeployState, setDeployResult, addToast, initializeToken]);
 
   const isDeploying = deployState === 'uploading' || deployState === 'preparing' || deployState === 'confirming';
+
+  // Cost breakdown
+  const creationFee = TOKEN_CREATION_FEE_USDT; // from env
+  const initialBuyCost = simulation.initialBuyTotalCost;
+  const totalCostUsdt = creationFee + initialBuyCost;
+  const totalCostWei = BigInt(Math.floor(totalCostUsdt * 1e6));
+  const availableUSDT = Number(totalAvailableUSDT) / 1e6;
+  const hasEnough = Number(totalAvailableUSDT) >= Number(totalCostWei);
+
   const deployButtonText = (() => {
     if (!connected) return 'CONNECT WALLET FIRST';
+    if (!hasEnough) return 'INSUFFICIENT BALANCE';
     switch (deployState) {
       case 'uploading': return 'UPLOADING IMAGE...';
       case 'preparing': return 'PREPARING...';
       case 'confirming': return 'CONFIRMING...';
       case 'error': return 'DEPLOY FAILED';
-      default: return 'DEPLOY TOKEN';
+      default: return 'CONFIRM & DEPLOY TOKEN';
     }
   })();
 
@@ -265,26 +279,84 @@ export function StepReview() {
         </div>
       </div>
 
-      {/* Deploy cost estimate */}
+      {/* ── Fee Confirmation Panel ── */}
       <div
         style={{
-          textAlign: 'center',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '12px',
-          color: 'var(--text-muted)',
+          background: hasEnough ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+          border: `1px solid ${hasEnough ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.25)'}`,
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-4)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-3)',
         }}
       >
-        Creation fee: {TOKEN_CREATION_FEE_USDT.toLocaleString()} USDT 
-        {formData.initialBuyAmount > 0 && ` + ~${simulation.initialBuyTotalCost.toFixed(2)} USDT (Initial Buy)`} 
-        + BSC gas
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', letterSpacing: '2px', color: 'var(--text-muted)', marginBottom: 2 }}>
+          PAYMENT SUMMARY
+        </div>
+
+        {/* Line items */}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-secondary)' }}>Creation Fee</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)' }}>{creationFee.toFixed(2)} USDT</span>
+        </div>
+
+        {formData.initialBuyAmount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Initial Buy ({formData.initialBuyAmount.toLocaleString()} tokens)
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-primary)' }}>
+              ~{initialBuyCost.toFixed(4)} USDT
+            </span>
+          </div>
+        )}
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Total</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '16px', fontWeight: 700, color: hasEnough ? 'var(--buy)' : 'var(--sell)' }}>
+            {totalCostUsdt.toFixed(4)} USDT
+          </span>
+        </div>
+
+        {/* Balance */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {hasEnough ? <CheckCircle size={13} color="var(--buy)" /> : <AlertTriangle size={13} color="var(--sell)" />}
+            Your Platform Balance
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 600, color: hasEnough ? 'var(--buy)' : 'var(--sell)' }}>
+            {availableUSDT.toFixed(2)} USDT
+          </span>
+        </div>
+
+        {/* Insufficient balance — show deposit prompt */}
+        {!hasEnough && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--sell)' }}>
+              You need {(totalCostUsdt - availableUSDT).toFixed(4)} more USDT to continue.
+            </span>
+            <button
+              onClick={() => openModal('deposit')}
+              style={{
+                padding: '6px 12px', background: 'var(--brand)', color: '#fff',
+                border: 'none', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
+                fontWeight: 600, fontSize: '12px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+              }}
+            >
+              <Wallet size={12} /> Deposit
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Deploy Button */}
       <Button
-        variant={connected ? 'buy' : 'outline'}
+        variant={connected && hasEnough ? 'buy' : 'outline'}
         size="lg"
         isLoading={isDeploying}
-        disabled={isDeploying || deployState === 'error'}
+        disabled={isDeploying || deployState === 'error' || !hasEnough}
         onClick={handleDeploy}
         style={{
           width: '100%',
@@ -295,6 +367,7 @@ export function StepReview() {
       >
         {deployButtonText}
       </Button>
+
     </div>
   );
 }

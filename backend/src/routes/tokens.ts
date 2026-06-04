@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { BSC_CHAIN_ID, normalizeAddress } from '../services/bsc';
+import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT } from '../services/bsc';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -188,11 +188,27 @@ export async function tokenRoutes(app: FastifyInstance) {
         initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6)); // 1e6 for solAmount
       }
 
-      const creationFeeUsdt = 3.0; // Assume 3 USDT creation fee
+      const creationFeeUsdt = TOKEN_CREATION_FEE_USDT; // Read from RENDER env var
       const totalCostUsdt = costUsdt + creationFeeUsdt;
       const totalCostWei = BigInt(Math.floor(totalCostUsdt * 1e6));
 
-      // Charge the user
+      // Charge the user — check balance first
+      const balance = await prisma.userBalance.findFirst({
+        where: {
+          walletAddress: creator,
+          asset: '0x0000000000000000000000000000000000000000',
+        },
+      });
+      if (!balance || balance.available < totalCostWei) {
+        // Roll back token creation and return error
+        await prisma.token.delete({ where: { id: token.id } });
+        return reply.code(402).send({
+          error: `Insufficient balance. Need ${totalCostUsdt.toFixed(2)} USDT (${creationFeeUsdt} fee + ${costUsdt.toFixed(2)} initial buy).`,
+          code: 'INSUFFICIENT_BALANCE',
+          required: totalCostWei.toString(),
+          creationFee: BigInt(Math.floor(creationFeeUsdt * 1e6)).toString(),
+        });
+      }
       await prisma.userBalance.upsert({
         where: {
           walletAddress_chainId_asset: {

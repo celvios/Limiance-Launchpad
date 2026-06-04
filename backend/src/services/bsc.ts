@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 const DEFAULT_BSC_TESTNET_RPC = 'https://data-seed-prebsc-1-s1.bnbchain.org:8545';
 
 export const BSC_CHAIN_ID = Number(process.env.BSC_CHAIN_ID ?? '97');
@@ -16,10 +18,13 @@ export const PIMLICO_API_KEY = process.env.PIMLICO_API_KEY ?? '';
 export const PIMLICO_BUNDLER_URL = process.env.PIMLICO_BUNDLER_URL ?? '';
 export const PIMLICO_PAYMASTER_URL = process.env.PIMLICO_PAYMASTER_URL ?? '';
 export const PIMLICO_SPONSORSHIP_POLICY_ID = process.env.PIMLICO_SPONSORSHIP_POLICY_ID ?? '';
-export const TOKEN_CREATION_FEE_USDT = process.env.TOKEN_CREATION_FEE_USDT ?? '10';
+export const TOKEN_CREATION_FEE_USDT = Number(process.env.TOKEN_CREATION_FEE_USDT ?? '10');
 export const GAS_SPONSOR_DAILY_LIMIT_USDT = BigInt(process.env.GAS_SPONSOR_DAILY_LIMIT_USDT ?? '100000000');
 
-const PREDICTED_VAULT_SELECTOR = '0x3cb7ed9f'; // predictedDepositVault(address,address)
+// ABI interface for CentralTreasury vault prediction
+const TREASURY_IFACE = new ethers.Interface([
+  'function predictedDepositVault(address user, address asset) external view returns (address)',
+]);
 
 export function normalizeAddress(address: string): string {
   const trimmed = address.trim();
@@ -60,24 +65,32 @@ export async function predictVaultAddress(userWallet: string, asset = PAYMENT_AS
     return pseudoVaultAddress(user, paymentAsset);
   }
 
-  const data = `${PREDICTED_VAULT_SELECTOR}${encodeAddress(user)}${encodeAddress(paymentAsset)}`;
-  const res = await fetch(BSC_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_call',
-      params: [{ to: TREASURY_ADDRESS, data }, 'latest'],
-    }),
-  });
-  if (!res.ok) throw new Error(`BSC RPC error: ${res.status}`);
-  const json = (await res.json()) as { result?: string; error?: { message?: string } };
-  if (!json.result || json.result === '0x') {
-    if (json.error?.message) throw new Error(json.error.message);
+  try {
+    // Encode the call using ethers Interface for correct selector
+    const callData = TREASURY_IFACE.encodeFunctionData('predictedDepositVault', [user, paymentAsset]);
+    const res = await fetch(BSC_RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_call',
+        params: [{ to: TREASURY_ADDRESS, data: callData }, 'latest'],
+      }),
+    });
+    if (!res.ok) throw new Error(`BSC RPC error: ${res.status}`);
+    const json = (await res.json()) as { result?: string; error?: { message?: string } };
+    if (!json.result || json.result === '0x') {
+      if (json.error?.message) console.warn('[bsc] predictVaultAddress RPC error:', json.error.message);
+      return pseudoVaultAddress(user, paymentAsset);
+    }
+    // Decode the returned address
+    const decoded = TREASURY_IFACE.decodeFunctionResult('predictedDepositVault', json.result);
+    return decoded[0].toLowerCase();
+  } catch (err) {
+    console.warn('[bsc] predictVaultAddress failed, using pseudo:', err);
     return pseudoVaultAddress(user, paymentAsset);
   }
-  return `0x${json.result.slice(-40)}`.toLowerCase();
 }
 
 export async function getCurrentBlockNumber(): Promise<bigint> {
