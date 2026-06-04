@@ -140,6 +140,38 @@ export async function depositRoutes(app: FastifyInstance) {
     return reply.send({ balances: balances.map(serializeBalance) });
   });
 
+  // ── FOR TESTING ONLY: Mock direct credit ────────────────────────────────────
+  app.post('/api/deposits/mock-credit', async (req, reply) => {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+    const walletAddress = normalizeAddress(session.wallet);
+    const amountStr = '10000000000'; // 10,000.00 USDT (6 decimals)
+    
+    await (prisma as any).userBalance.upsert({
+      where: {
+        walletAddress_chainId_asset: {
+          walletAddress,
+          chainId: BSC_CHAIN_ID,
+          asset: PAYMENT_ASSET,
+        },
+      },
+      update: {
+        available: { increment: amountStr },
+      },
+      create: {
+        userId: session.userId,
+        walletAddress,
+        chainId: BSC_CHAIN_ID,
+        asset: PAYMENT_ASSET,
+        available: amountStr,
+      },
+    });
+
+    return reply.code(200).send({ success: true, credited: '10000.00' });
+  });
+
   app.get('/api/deposits/history/:wallet', async (req, reply) => {
     const { wallet } = req.params as { wallet: string };
     const walletAddress = normalizeAddress(wallet);

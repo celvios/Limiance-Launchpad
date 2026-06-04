@@ -146,10 +146,12 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
   const disconnect = useCallback(() => {
     if (address) clearSession(address);
     setToken(null);
+    authTypeRef.current = null;
     setAddress(null);
+    setChainId(BSC_CHAIN_ID);
     setEmail(null);
     setAuthType(null);
-  }, [address]);
+  }, []);
 
   const connectEmail = useCallback(async (
     nextEmail: string,
@@ -157,6 +159,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     wallet: { embeddedSignerAddress: string; smartAccountAddress: string },
   ) => {
     const session = await verifyEmailOtp(nextEmail, code, wallet);
+    authTypeRef.current = 'email';
     setAddress(normalizeAddress(session.wallet));
     setEmail(session.email);
     setAuthType('email');
@@ -168,6 +171,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
 
   const setEmbeddedSession = useCallback((walletAddress: string, email: string, token: string) => {
     const addr = normalizeAddress(walletAddress);
+    authTypeRef.current = 'email';
     setAddress(addr);
     setEmail(email);
     setAuthType('email');

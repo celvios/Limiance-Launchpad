@@ -8,7 +8,7 @@ import {
 import { useUserBalance } from '@/hooks/useUserBalance';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { formatNumber } from '@/lib/format';
-import { USDT_ADDRESS } from '@/lib/constants';
+import { API_BASE_URL, USDT_ADDRESS } from '@/lib/constants';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface DepositWithdrawModalProps {
@@ -35,7 +35,7 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   const [walletTxError, setWalletTxError] = useState<string | null>(null);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-  const { authType, address } = useWallet();
+  const { authType, address, token: authToken } = useWallet();
   const {
     totalAvailableUSDT,
     depositAddress,
@@ -135,6 +135,23 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
       alert(err?.message ?? 'Failed to withdraw');
     } finally {
       setIsWithdrawing(false);
+    }
+  };
+
+  const handleMintMockUsdt = async () => {
+    setWalletTxError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/deposits/mock-credit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      });
+      if (!res.ok) throw new Error('Failed to mint mock USDT');
+      // The polling effect will automatically detect the balance increase and go to step 3
+    } catch (err: any) {
+      setWalletTxError(err?.message ?? 'Failed to mint test funds');
     }
   };
 
@@ -305,15 +322,23 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
                         </a>
                       </div>
                     ) : (
-                      <button
-                        onClick={handleWalletSend}
-                        disabled={walletTxPending}
-                        style={primaryBtn(!walletTxPending)}
-                      >
-                        {walletTxPending
-                          ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Sending...</>
-                          : <><Send size={15} /> Send from Wallet</>}
-                      </button>
+                      <>
+                        <button
+                          onClick={handleWalletSend}
+                          disabled={walletTxPending}
+                          style={primaryBtn(!walletTxPending)}
+                        >
+                          {walletTxPending
+                            ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Sending...</>
+                            : <><Send size={15} /> Send from Wallet</>}
+                        </button>
+                        <button
+                          onClick={handleMintMockUsdt}
+                          style={{ ...primaryBtn(true), background: 'transparent', border: '1px solid var(--buy)', color: 'var(--buy)' }}
+                        >
+                          Bypass: Mint 10,000 Test USDT
+                        </button>
+                      </>
                     )}
                   </div>
                 )}
