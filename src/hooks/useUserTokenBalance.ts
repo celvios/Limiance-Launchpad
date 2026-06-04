@@ -29,8 +29,8 @@ export function useUserTokenBalance(tokenAddress: string | null | undefined, wal
 
   return {
     tokenBalanceWei: query.data ?? 0n,
-    /** Amount in human-readable token units (18 decimals) */
-    tokenBalance: Number(query.data ?? 0n) / 1e18,
+    /** Amount in human-readable token units (6 decimals stored in DB) */
+    tokenBalance: Number(query.data ?? 0n) / 1e6,
     isLoading: query.isLoading,
     invalidate,
   };

@@ -361,9 +361,9 @@ export async function tokenRoutes(app: FastifyInstance) {
     const { address: tokenAddressParam } = req.params as { address: string };
     const tokenAddress = tokenAddressParam.toLowerCase();
 
-    // 6 decimals for platform USDT, 18 for tokens
-    const amountUsdtWei  = BigInt(Math.round(amountUsdt   * 1e6));
-    const amountTokensWei = BigInt(Math.round(amountTokens * 1e18));
+    // Both USDT and token amounts use 6 decimals to fit inside Postgres BIGINT (max ~9.2e18)
+    const amountUsdtWei   = BigInt(Math.round(amountUsdt   * 1e6));
+    const amountTokensWei = BigInt(Math.round(amountTokens * 1e6));
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
@@ -469,7 +469,7 @@ export async function tokenRoutes(app: FastifyInstance) {
             solAmount: amountUsdtWei,
             paymentAmount: amountUsdtWei,
             paymentAsset: PAYMENT_ASSET,
-            pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
+            pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e6)) : 0n,
             txSignature: `internal-${type}-${Date.now()}`,
             timestamp: new Date(),
             isWhale: amountUsdt >= 1000,
