@@ -124,6 +124,41 @@ export async function tokenRoutes(app: FastifyInstance) {
         },
       });
 
+      // Calculate costs and solAmount
+      let initialSolAmountWei = 0n;
+      let costUsdt = 0;
+      if (body.initialBuyAmount > 0) {
+        const priceUsdt = body.curveParams.pMin ?? 0.00001;
+        costUsdt = body.initialBuyAmount * priceUsdt;
+        initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6)); // 1e6 for solAmount
+      }
+
+      const creationFeeUsdt = 3.0; // Assume 3 USDT creation fee
+      const totalCostUsdt = costUsdt + creationFeeUsdt;
+      const totalCostWei = BigInt(Math.floor(totalCostUsdt * 1e6));
+
+      // Charge the user
+      await prisma.userBalance.upsert({
+        where: {
+          walletAddress_chainId_asset: {
+            walletAddress: creator,
+            chainId: 97, // Assuming BSC Testnet for simulation
+            asset: '0x0000000000000000000000000000000000000000',
+          },
+        },
+        update: {
+          available: { decrement: totalCostWei },
+          consumed: { increment: totalCostWei },
+        },
+        create: {
+          walletAddress: creator,
+          chainId: 97,
+          asset: '0x0000000000000000000000000000000000000000',
+          available: 10000_000000n - totalCostWei, // Give 10k mock USDT initially if no balance
+          consumed: totalCostWei,
+        },
+      });
+
       if (body.initialBuyAmount > 0) {
         await prisma.trade.create({
           data: {
@@ -132,8 +167,8 @@ export async function tokenRoutes(app: FastifyInstance) {
             walletAddress: creator,
             type: 'buy',
             amount: BigInt(body.initialBuyAmount),
-            solAmount: 0n,
-            paymentAmount: 0n,
+            solAmount: initialSolAmountWei,
+            paymentAmount: initialSolAmountWei,
             paymentAsset: '0x0000000000000000000000000000000000000000',
             pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
             txSignature: `initial-buy-${token.id}`,

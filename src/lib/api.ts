@@ -281,7 +281,7 @@ export async function fetchChartData(
     return generateMockChartData(card, range);
   }
 
-  const res = await fetch(`${API_BASE_URL}/tokens/${mint}/chart?range=${range}`);
+  const res = await fetch(`${API_BASE_URL}/tokens/${mint}/chart?range=${range.toLowerCase()}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json() as Promise<ChartDataPoint[]>;
 }
