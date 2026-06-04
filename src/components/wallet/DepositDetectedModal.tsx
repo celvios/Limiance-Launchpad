@@ -11,26 +11,34 @@ function formatUsdt(wei: bigint): string {
 }
 
 export function DepositDetectedModal() {
-  const { totalAvailableUSDT } = useUserBalance();
-  const prevBalRef = useRef<bigint | null>(null);
+  const { totalAvailableUSDT, isLoading } = useUserBalance();
+  const prevBalRef    = useRef<bigint | null>(null);
+  const initializedRef = useRef(false);
   const [visible, setVisible] = useState(false);
   const [depositedAmount, setDepositedAmount] = useState<bigint>(0n);
 
   useEffect(() => {
-    // On first render just record the balance without triggering the modal
-    if (prevBalRef.current === null) {
+    // While the initial balance query is still loading, don't do anything —
+    // the balance will jump from 0n to the real amount and we must not treat
+    // that jump as a new deposit.
+    if (isLoading) return;
+
+    if (!initializedRef.current) {
+      // First time we have a settled balance: record it as the baseline.
       prevBalRef.current = totalAvailableUSDT;
+      initializedRef.current = true;
       return;
     }
 
-    if (totalAvailableUSDT > prevBalRef.current) {
+    // Only fire the modal when the balance genuinely increases after init.
+    if (prevBalRef.current !== null && totalAvailableUSDT > prevBalRef.current) {
       const diff = totalAvailableUSDT - prevBalRef.current;
       setDepositedAmount(diff);
       setVisible(true);
     }
 
     prevBalRef.current = totalAvailableUSDT;
-  }, [totalAvailableUSDT]);
+  }, [totalAvailableUSDT, isLoading]);
 
   if (!visible) return null;
 

@@ -361,9 +361,13 @@ export async function tokenRoutes(app: FastifyInstance) {
     const { address: tokenAddressParam } = req.params as { address: string };
     const tokenAddress = tokenAddressParam.toLowerCase();
 
-    // Both USDT and token amounts use 6 decimals to fit inside Postgres BIGINT (max ~9.2e18)
-    const amountUsdtWei   = BigInt(Math.round(amountUsdt   * 1e6));
-    const amountTokensWei = BigInt(Math.round(amountTokens * 1e6));
+    // USDT: 6 decimals for DB storage
+    // Tokens: TWO representations needed:
+    //   amountTokensRaw  = raw integer units (matches Token.currentSupply / graduationThreshold scale)
+    //   amountTokensWei  = 6-decimal units for UserTokenBalance (fits in Postgres BIGINT)
+    const amountUsdtWei    = BigInt(Math.round(amountUsdt   * 1e6));
+    const amountTokensRaw  = BigInt(Math.round(amountTokens));        // for currentSupply
+    const amountTokensWei  = BigInt(Math.round(amountTokens * 1e6));  // for UserTokenBalance
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
@@ -392,11 +396,11 @@ export async function tokenRoutes(app: FastifyInstance) {
             data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
           });
 
-          // Credit token balance
+          // Credit token balance (6-decimal scaled for UserTokenBalance)
           const existingTokenBal = await tx.userTokenBalance.findUnique({
             where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
           });
-          
+
           if (existingTokenBal) {
             await tx.userTokenBalance.update({
               where: { id: existingTokenBal.id },
@@ -408,15 +412,13 @@ export async function tokenRoutes(app: FastifyInstance) {
             });
           }
 
-          // Advance the bonding curve supply
-          const newSupply = token.currentSupply + amountTokensWei;
+          // Advance the bonding curve supply (raw integer units — matches graduationThreshold scale)
+          const newSupply = token.currentSupply + amountTokensRaw;
           const willGraduate = newSupply >= token.graduationThreshold;
           await tx.token.update({
             where: { id: token.id },
             data: {
               currentSupply: newSupply,
-              // NOTE: when status becomes 'graduating', a separate job should execute
-              // the bulk buyFromVault on-chain, add liquidity, and mark as 'graduated'.
               status: willGraduate ? 'graduating' : 'active',
             },
           });
@@ -436,7 +438,7 @@ export async function tokenRoutes(app: FastifyInstance) {
             data: { amount: { decrement: amountTokensWei } },
           });
 
-          // Credit USDT — upsert in case user somehow has no USDT row
+          // Credit USDT
           if (usdtBalance) {
             await tx.userBalance.update({
               where: { id: usdtBalance.id },
@@ -453,8 +455,8 @@ export async function tokenRoutes(app: FastifyInstance) {
             });
           }
 
-          // Roll back the bonding curve supply
-          const newSupply = token.currentSupply - amountTokensWei;
+          // Roll back the bonding curve supply (raw integer units)
+          const newSupply = token.currentSupply - amountTokensRaw;
           await tx.token.update({
             where: { id: token.id },
             data: { currentSupply: newSupply > 0n ? newSupply : 0n },
@@ -480,8 +482,8 @@ export async function tokenRoutes(app: FastifyInstance) {
         });
 
         const finalSupply = type === 'buy'
-          ? token.currentSupply + amountTokensWei
-          : token.currentSupply - amountTokensWei;
+          ? token.currentSupply + amountTokensRaw
+          : token.currentSupply - amountTokensRaw;
 
         return { trade, newSupply: finalSupply.toString(), graduated: type === 'buy' && finalSupply >= token.graduationThreshold };
       });
