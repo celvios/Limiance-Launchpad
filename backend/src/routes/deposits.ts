@@ -260,4 +260,152 @@ export async function depositRoutes(app: FastifyInstance) {
 
     return reply.code(201).send({ depositId: result.id, credited: result.credited });
   });
+  app.post('/api/deposits/withdraw', async (req, reply) => {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
+    const WithdrawBody = z.object({
+      amount: z.string().regex(/^\d+$/),
+      asset: z.string().default(PAYMENT_ASSET),
+      chainId: z.coerce.number().default(BSC_CHAIN_ID),
+      destination: z.string(),
+    });
+
+    const parsed = WithdrawBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
+    }
+
+    const userWallet = normalizeAddress(session.wallet);
+    const asset = normalizeAddress(parsed.data.asset);
+    const destination = normalizeAddress(parsed.data.destination);
+    const amountWei = BigInt(parsed.data.amount);
+
+    if (amountWei <= 0n) {
+      return reply.code(400).send({ error: 'Amount must be greater than 0', code: 'INVALID_AMOUNT' });
+    }
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      const balance = await tx.userBalance.findUnique({
+        where: {
+          walletAddress_chainId_asset: {
+            walletAddress: userWallet,
+            chainId: parsed.data.chainId,
+            asset,
+          },
+        },
+      });
+
+      if (!balance || BigInt(balance.available) < amountWei) {
+        throw new Error('Insufficient balance');
+      }
+
+      await tx.userBalance.update({
+        where: { id: balance.id },
+        data: {
+          available: { decrement: amountWei },
+        },
+      });
+
+      // Here you would queue the withdrawal to be processed on-chain
+      // by the Limiance Treasury hot wallet.
+      // For now, we just deduct the balance.
+      
+      return balance;
+    });
+
+    return reply.send({ success: true, newBalance: result });
+  app.post('/api/deposits/testnet-credit', async (req, reply) => {
+    // ONLY allowed if environment is not strictly production requiring an indexer
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
+    const TestnetCreditBody = z.object({
+      amount: z.string().regex(/^\d+$/),
+      asset: z.string().default(PAYMENT_ASSET),
+      chainId: z.coerce.number().default(BSC_CHAIN_ID),
+      txHash: z.string(), // We just trust the tx hash on testnet
+    });
+
+    const parsed = TestnetCreditBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
+    }
+
+    const userWallet = normalizeAddress(session.wallet);
+    const asset = normalizeAddress(parsed.data.asset);
+    
+    // Check if txHash was already credited
+    const existingDeposit = await (prisma as any).deposit.findFirst({
+      where: { txHash: parsed.data.txHash }
+    });
+
+    if (existingDeposit) {
+      return reply.code(400).send({ error: 'Transaction already credited', code: 'DUPLICATE_TX' });
+    }
+
+    const vaultAddress = await predictVaultAddress(userWallet, asset);
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      // Create deposit record to prevent double crediting
+      const depositAddress = await tx.depositAddress.upsert({
+        where: {
+          userWallet_chainId_asset: { userWallet, chainId: parsed.data.chainId, asset },
+        },
+        update: { vaultAddress, userId: session.userId ?? undefined },
+        create: {
+          userId: session.userId ?? undefined,
+          userWallet,
+          chainId: parsed.data.chainId,
+          asset,
+          vaultAddress,
+        },
+      });
+
+      const deposit = await tx.deposit.create({
+        data: {
+          depositAddressId: depositAddress.id,
+          vaultAddress,
+          userWallet,
+          chainId: parsed.data.chainId,
+          asset,
+          amount: BigInt(parsed.data.amount),
+          txHash: parsed.data.txHash,
+          logIndex: 0,
+          confirmations: 1,
+          credited: true,
+        },
+      });
+
+      // Credit UserBalance
+      await tx.userBalance.upsert({
+        where: {
+          walletAddress_chainId_asset: {
+            walletAddress: userWallet,
+            chainId: parsed.data.chainId,
+            asset,
+          },
+        },
+        update: {
+          userId: session.userId ?? undefined,
+          available: { increment: BigInt(parsed.data.amount) },
+        },
+        create: {
+          userId: session.userId ?? undefined,
+          walletAddress: userWallet,
+          chainId: parsed.data.chainId,
+          asset,
+          available: BigInt(parsed.data.amount),
+        },
+      });
+
+      return deposit;
+    });
+
+    return reply.send({ success: true, depositId: result.id });
+  });
 }

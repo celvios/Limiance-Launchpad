@@ -7,8 +7,11 @@ import { useUIStore } from '@/store/uiStore';
 import { Button } from '@/components/ui/Button';
 import { calculateBuyPrice } from '@/lib/curve/math';
 import { formatAddress, formatNumber } from '@/lib/format';
+import { formatAddress, formatNumber } from '@/lib/format';
 import { API_BASE_URL, BSC_CHAIN_ID, CHAIN_CURRENCY, DEX_NAME, PAYMENT_ASSET } from '@/lib/constants';
 import { useBuy } from '@/hooks/useTradeTransaction';
+import { useUserBalance } from '@/hooks/useUserBalance';
+import { useAuth } from '@/hooks/useAuth';
 import type { DepositAddress, TokenDetail } from '@/lib/types';
 
 interface TradePanelProps {
@@ -28,16 +31,20 @@ export function TradePanel({ token }: TradePanelProps) {
   const { address, connected, chainId, switchToBsc } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
   const addToast = useUIStore((s) => s.addToast);
-  const [activeTab, setActiveTab] = useState<TradeTab>('wallet');
+  const [activeTab, setActiveTab] = useState<TradeTab>('balance');
   const [inputValue, setInputValue] = useState('');
   const [txState, setTxState] = useState<TxState>('idle');
   const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
   const [isLoadingDeposit, setIsLoadingDeposit] = useState(false);
+  
   const { buy } = useBuy(token.tokenAddress ?? token.mint);
+  const { totalAvailableUSDT } = useUserBalance();
+  const { token: authToken } = useAuth();
 
   const inputAmount = parseFloat(inputValue) || 0;
   const isGraduated = token.status === 'graduated';
   const wrongNetwork = connected && chainId !== BSC_CHAIN_ID;
+  const displayBalance = Number(totalAvailableUSDT) / 1e6;
 
   const buyEstimate = useMemo(() => {
     if (inputAmount <= 0) return null;
@@ -100,6 +107,50 @@ export function TradePanel({ token }: TradePanelProps) {
     await navigator.clipboard.writeText(depositAddress.vaultAddress);
     addToast({ type: 'success', message: 'Deposit address copied' });
   }, [depositAddress, addToast]);
+
+  const executeBalanceBuy = useCallback(async () => {
+    if (!address || !authToken) {
+      addToast({ type: 'error', message: 'Please connect and sign in first' });
+      return;
+    }
+    if (!buyEstimate || inputAmount <= 0) return;
+    if (inputAmount > displayBalance) {
+      addToast({ type: 'error', message: 'Insufficient platform balance. Please deposit USDT.' });
+      return;
+    }
+
+    setTxState('confirming');
+    try {
+      const res = await fetch(`/api/tokens/${token.tokenAddress ?? token.mint}/trade`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          wallet: address,
+          type: 'buy',
+          amountUsdt: inputAmount,
+          amountTokens: buyEstimate.tokensOut,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Balance buy failed');
+      }
+
+      setTxState('success');
+      addToast({ type: 'success', message: `Bought ${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol} instantly!` });
+      setInputValue('');
+      setTimeout(() => setTxState('idle'), 1500);
+      // In a real app, invalidate queries here to refresh the token supply and balance
+    } catch (error) {
+      setTxState('error');
+      addToast({ type: 'error', message: error instanceof Error ? error.message : 'Buy failed' });
+      setTimeout(() => setTxState('idle'), 1000);
+    }
+  }, [address, authToken, buyEstimate, inputAmount, displayBalance, addToast, token]);
 
   if (isGraduated) {
     const output = token.dexPoolAddress ?? token.tokenAddress ?? token.mint;
@@ -225,16 +276,54 @@ export function TradePanel({ token }: TradePanelProps) {
 
       {activeTab === 'balance' && (
         <div style={bodyStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Wallet size={18} />
-            <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Balance Buy</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={labelStyle}>You pay (USDT Balance)</label>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
+              Available: {formatNumber(displayBalance)} USDT
+            </span>
           </div>
-          <div style={warningStyle}>
-            <AlertTriangle size={16} />
-            Balance buys use confirmed {CHAIN_CURRENCY} credit and Pimlico-sponsored gas after the indexer and paymaster are active.
+          <div style={inputShellStyle}>
+            <input
+              type="number"
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              placeholder="0.00"
+              disabled={txState === 'confirming'}
+              style={inputStyle}
+            />
+            <span style={unitStyle}>USDT</span>
           </div>
-          <Button variant="outline" size="md" disabled>
-            Gasless balance buy pending activation
+
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            {USDT_PRESETS.map((value) => (
+              <button key={value} onClick={() => setInputValue(String(value))} style={presetStyle}>
+                {value} USDT
+              </button>
+            ))}
+          </div>
+
+          {buyEstimate && inputAmount > 0 && (
+            <div style={estimateStyle}>
+              <Row label="Receive estimate" value={`${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}`} />
+              <Row label="Average price" value={`${buyEstimate.avgPrice.toFixed(8)} USDT`} />
+              <Row label="Price impact" value={`${buyEstimate.priceImpact.toFixed(2)}%`} />
+              <Row label="Platform Fee" value="0.00 USDT" />
+            </div>
+          )}
+
+          <Button
+            variant="buy"
+            size="lg"
+            onClick={executeBalanceBuy}
+            disabled={inputAmount <= 0 || txState === 'confirming' || inputAmount > displayBalance}
+            isLoading={txState === 'confirming'}
+            style={{ width: '100%' }}
+          >
+            {inputAmount > displayBalance 
+              ? 'INSUFFICIENT BALANCE' 
+              : inputAmount > 0 
+                ? `INSTANT BUY ${token.symbol}` 
+                : 'ENTER AMOUNT'}
           </Button>
         </div>
       )}

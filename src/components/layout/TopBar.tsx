@@ -6,6 +6,7 @@ import { Search } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { useFeedStore } from '@/store/feedStore';
 import { MOCK_TOKENS } from '@/lib/mockData';
+import { PlatformBalanceChip } from './PlatformBalanceChip';
 import { formatNumber } from '@/lib/format';
 
 const TRENDING_TAGS = ['trending', 'new', 'sigmoid', 'near-grad'];
@@ -261,6 +262,8 @@ export function TopBar() {
           );
         })}
       </div>
+      
+      <PlatformBalanceChip />
     </header>
   );
 }
