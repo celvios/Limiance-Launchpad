@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT } from '../services/bsc';
+import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT, PAYMENT_ASSET } from '../services/bsc';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -196,7 +196,7 @@ export async function tokenRoutes(app: FastifyInstance) {
       const balance = await prisma.userBalance.findFirst({
         where: {
           walletAddress: creator,
-          asset: '0x0000000000000000000000000000000000000000',
+          asset: PAYMENT_ASSET,
         },
       });
       if (!balance || balance.available < totalCostWei) {
@@ -214,7 +214,7 @@ export async function tokenRoutes(app: FastifyInstance) {
           walletAddress_chainId_asset: {
             walletAddress: creator,
             chainId: 97, // Assuming BSC Testnet for simulation
-            asset: '0x0000000000000000000000000000000000000000',
+            asset: PAYMENT_ASSET,
           },
         },
         update: {
@@ -224,7 +224,7 @@ export async function tokenRoutes(app: FastifyInstance) {
         create: {
           walletAddress: creator,
           chainId: 97,
-          asset: '0x0000000000000000000000000000000000000000',
+          asset: PAYMENT_ASSET,
           available: 10000_000000n - totalCostWei, // Give 10k mock USDT initially if no balance
           consumed: totalCostWei,
         },
@@ -240,7 +240,7 @@ export async function tokenRoutes(app: FastifyInstance) {
             amount: BigInt(body.initialBuyAmount),
             solAmount: initialSolAmountWei,
             paymentAmount: initialSolAmountWei,
-            paymentAsset: '0x0000000000000000000000000000000000000000',
+            paymentAsset: PAYMENT_ASSET,
             pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
             txSignature: `initial-buy-${token.id}`,
             timestamp: new Date(),
@@ -373,7 +373,7 @@ export async function tokenRoutes(app: FastifyInstance) {
       if (token.status !== 'active') throw new Error('Token is not active for trading');
 
       const usdtBalance = await tx.userBalance.findFirst({
-        where: { walletAddress: userWallet, asset: ZERO_ADDRESS },
+        where: { walletAddress: userWallet, asset: PAYMENT_ASSET },
       });
 
       if (type === 'buy') {
@@ -434,7 +434,7 @@ export async function tokenRoutes(app: FastifyInstance) {
             data: {
               walletAddress: userWallet,
               chainId: BSC_CHAIN_ID,
-              asset: ZERO_ADDRESS,
+              asset: PAYMENT_ASSET,
               available: amountUsdtWei,
             },
           });
@@ -458,7 +458,7 @@ export async function tokenRoutes(app: FastifyInstance) {
           amount: amountTokensWei,
           solAmount: amountUsdtWei,
           paymentAmount: amountUsdtWei,
-          paymentAsset: ZERO_ADDRESS,
+          paymentAsset: PAYMENT_ASSET,
           pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
           txSignature: `internal-${type}-${Date.now()}`,
           timestamp: new Date(),

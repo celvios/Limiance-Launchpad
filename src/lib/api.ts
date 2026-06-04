@@ -283,7 +283,8 @@ export async function fetchChartData(
 
   const res = await fetch(`${API_BASE_URL}/tokens/${mint}/chart?range=${range.toLowerCase()}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json() as Promise<ChartDataPoint[]>;
+  const body = await res.json() as { data: ChartDataPoint[] };
+  return body.data ?? [];
 }
 
 /* ── Phase 4: Create Token ── */
