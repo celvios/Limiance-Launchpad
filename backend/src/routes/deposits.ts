@@ -450,4 +450,25 @@ export async function depositRoutes(app: FastifyInstance) {
 
     return reply.send({ success: true, depositId: result.id });
   });
+
+  // ── FOR DEV ONLY: Reset entire database ──────────────────────────────────────
+  app.get('/api/dev/reset', async (req, reply) => {
+    try {
+      await prisma.$transaction([
+        (prisma as any).trade.deleteMany({}),
+        (prisma as any).comment.deleteMany({}),
+        (prisma as any).deposit.deleteMany({}),
+        (prisma as any).depositAddress.deleteMany({}),
+        (prisma as any).userBalance.deleteMany({}),
+        (prisma as any).token.deleteMany({}),
+        (prisma as any).profile.deleteMany({}),
+        (prisma as any).session.deleteMany({}),
+        (prisma as any).user.deleteMany({}),
+        (prisma as any).indexerState.deleteMany({}),
+      ]);
+      return reply.send({ success: true, message: "Database completely wiped!" });
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
 }

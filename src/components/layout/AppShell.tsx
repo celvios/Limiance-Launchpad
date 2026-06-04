@@ -118,9 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           logo: 'https://placehold.co/400x400/png',
         },
         embeddedWallets: {
-          ethereum: {
-            createOnLogin: 'users-without-wallets',
-          },
+          createOnLogin: 'users-without-wallets',
         },
         defaultChain: bscChain,
         supportedChains: [bscChain],
