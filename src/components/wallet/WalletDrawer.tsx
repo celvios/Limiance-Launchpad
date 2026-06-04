@@ -14,7 +14,7 @@ export function WalletDrawer() {
   const isOpen = useUIStore((s) => s.isWalletDrawerOpen);
   const closeDrawer = useUIStore((s) => s.closeWalletDrawer);
   const { address, email: connectedEmail, authType, connected, chainId, connect, switchToBsc, isAuthenticated, isLoggingIn, login } = useWallet();
-  const { login: privyLogin } = usePrivy();
+  const { login: privyLogin, authenticated: privyAuthenticated, logout: privyLogout } = usePrivy();
 
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -275,8 +275,13 @@ export function WalletDrawer() {
                 <span style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)' }}>— OR —</span>
               </div>
               <button
-                onClick={() => {
+                onClick={async () => {
                   closeDrawer();
+                  if (privyAuthenticated) {
+                    try {
+                      await privyLogout();
+                    } catch (e) {}
+                  }
                   privyLogin();
                 }}
                 id="privy-login-btn"

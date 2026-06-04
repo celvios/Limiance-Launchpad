@@ -7,10 +7,12 @@ import { Home, Compass, Heart, User, Zap, GraduationCap, Settings, ExternalLink,
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
 import { useUIStore } from '@/store/uiStore';
+import { usePrivy } from '@privy-io/react-auth';
 
 export function MenuNavLinks() {
   const pathname = usePathname();
   const { connected, address, disconnect } = useWallet();
+  const { logout: privyLogout } = usePrivy();
   const watchlistCount = useWatchlistStore((s) => s.count());
   const { setMobileMenuOpen } = useUIStore();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
@@ -201,8 +203,13 @@ export function MenuNavLinks() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       disconnect();
+                      try {
+                        await privyLogout();
+                      } catch (err) {
+                        console.error('Privy logout failed:', err);
+                      }
                       setShowDisconnectConfirm(false);
                       handleNavigate();
                     }}
