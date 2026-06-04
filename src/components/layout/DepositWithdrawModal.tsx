@@ -13,7 +13,7 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
-  const { totalAvailableUSDT, testnetDeposit, isDepositing, withdraw, isWithdrawing } = useUserBalance();
+  const { totalAvailableUSDT, depositAddress, testnetDeposit, isDepositing, withdraw, isWithdrawing } = useUserBalance();
 
   const handleDeposit = async () => {
     try {
@@ -141,7 +141,54 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
         {activeTab === 'deposit' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <label style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Amount to Deposit (USDT)
+              Your Deposit Address (Send BEP-20 USDT here)
+            </label>
+            <div style={{
+              display: 'flex',
+              gap: 'var(--space-2)',
+              alignItems: 'center'
+            }}>
+              <input
+                type="text"
+                readOnly
+                value={depositAddress || 'Generating...'}
+                style={{
+                  width: '100%',
+                  padding: 'var(--space-3)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '13px',
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (depositAddress) navigator.clipboard.writeText(depositAddress);
+                }}
+                disabled={!depositAddress}
+                style={{
+                  padding: 'var(--space-3)',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-ui)',
+                  fontWeight: 600
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            
+            <div style={{ height: '1px', background: 'var(--border)', margin: 'var(--space-4) 0' }} />
+            
+            <label style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Mock Testnet Deposit (Dev Only)
             </label>
             <input
               type="number"
@@ -182,7 +229,7 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
                 marginTop: 'var(--space-2)'
               }}
             >
-              {isDepositing ? <Loader2 size={18} className="animate-spin" /> : 'Confirm Deposit (Testnet Mock)'}
+              {isDepositing ? <Loader2 size={18} className="animate-spin" /> : 'Confirm Mock Deposit'}
             </button>
           </div>
         ) : (

@@ -18,6 +18,8 @@ import { depositRoutes } from './routes/deposits';
 import { prisma } from './services/prisma';
 import { assertProductionConfig } from './services/production';
 import { addClient, removeClient } from './ws/server';
+import { runIndexer } from './services/indexer';
+import { runHotWalletWorker } from './services/hotWallet';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const IS_DEV = process.env.NODE_ENV !== 'production';
@@ -106,6 +108,12 @@ async function main() {
     await app.listen({ port: PORT, host: '0.0.0.0' });
     app.log.info(`API server running on http://0.0.0.0:${PORT}`);
     app.log.info(`WebSocket: ws://0.0.0.0:${PORT}/ws`);
+
+    // Start background workers
+    if (IS_DEV || process.env.RUN_WORKERS === 'true') {
+      runIndexer().catch(err => app.log.error('Indexer failed', err));
+      runHotWalletWorker().catch(err => app.log.error('Hot Wallet failed', err));
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

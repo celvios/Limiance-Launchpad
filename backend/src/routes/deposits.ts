@@ -309,14 +309,24 @@ export async function depositRoutes(app: FastifyInstance) {
         },
       });
 
-      // Here you would queue the withdrawal to be processed on-chain
-      // by the Limiance Treasury hot wallet.
-      // For now, we just deduct the balance.
+      // Queue the withdrawal to be processed on-chain by the Hot Wallet Worker
+      await tx.withdrawalRequest.create({
+        data: {
+          userId: session.userId ?? undefined,
+          userWallet: userWallet,
+          asset: asset,
+          amount: amountWei,
+          destination: destination,
+          status: 'pending'
+        }
+      });
       
       return balance;
     });
 
-    return reply.send({ success: true, newBalance: result });
+    return reply.send({ success: true, newBalance: (result as any).available?.toString() });
+  });
+
   app.post('/api/deposits/testnet-credit', async (req, reply) => {
     // ONLY allowed if environment is not strictly production requiring an indexer
     const session = authenticateSession(req.headers.authorization);

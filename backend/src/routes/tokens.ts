@@ -285,7 +285,8 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     const { wallet, type, amountUsdt, amountTokens } = parsed.data;
     const userWallet = normalizeAddress(wallet);
-    const tokenAddress = req.params.address.toLowerCase();
+    const { address: tokenAddressParam } = req.params as { address: string };
+    const tokenAddress = tokenAddressParam.toLowerCase();
 
     const amountUsdtWei = BigInt(Math.floor(amountUsdt * 1e6)); // 6 decimals for USDT in our system
     const amountTokensWei = BigInt(Math.floor(amountTokens * 1e18)); // 18 decimals for token
@@ -321,9 +322,14 @@ export async function tokenRoutes(app: FastifyInstance) {
         });
 
         // Update token supply
+        const newSupply = token.currentSupply + amountTokensWei;
+        const willGraduate = newSupply >= token.graduationThreshold;
         await tx.token.update({
           where: { id: token.id },
-          data: { currentSupply: { increment: amountTokensWei } },
+          data: { 
+            currentSupply: newSupply,
+            status: willGraduate ? 'graduating' : 'active'
+          },
         });
 
         // Note: Realistically we would also update a UserTokenBalance table to track their token holdings.
@@ -368,7 +374,8 @@ export async function tokenRoutes(app: FastifyInstance) {
         },
       });
 
-      return { trade, newSupply: token.currentSupply + (type === 'buy' ? amountTokensWei : -amountTokensWei) };
+      const newSupply = token.currentSupply + (type === 'buy' ? amountTokensWei : -amountTokensWei);
+      return { trade, newSupply, graduated: type === 'buy' && newSupply >= token.graduationThreshold };
     });
 
     return reply.send({ success: true, ...result });

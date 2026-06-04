@@ -29,6 +29,20 @@ export function useUserBalance() {
     refetchInterval: 10000, // Poll every 10s for updates
   });
 
+  const depositAddressQuery = useQuery({
+    queryKey: ['depositAddress', wallet],
+    queryFn: async (): Promise<string> => {
+      if (!wallet) return '';
+      const res = await fetch(`/api/users/me/deposit-address`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to fetch deposit address');
+      const data = await res.json();
+      return data.vaultAddress;
+    },
+    enabled: !!wallet && !!token,
+  });
+
   // Mutation to mock deposit on testnet
   const testnetDepositMutation = useMutation({
     mutationFn: async ({ amount, txHash }: { amount: string; txHash: string }) => {
@@ -82,9 +96,10 @@ export function useUserBalance() {
 
   return {
     balances: balanceQuery.data,
+    depositAddress: depositAddressQuery.data,
     totalAvailableUSDT,
-    isLoading: balanceQuery.isLoading,
-    error: balanceQuery.error,
+    isLoading: balanceQuery.isLoading || depositAddressQuery.isLoading,
+    error: balanceQuery.error || depositAddressQuery.error,
     testnetDeposit: testnetDepositMutation.mutateAsync,
     isDepositing: testnetDepositMutation.isPending,
     withdraw: withdrawMutation.mutateAsync,

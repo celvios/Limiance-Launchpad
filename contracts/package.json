@@ -11,6 +11,7 @@
     "compile": "hardhat compile",
     "deploy:mock-usdt": "hardhat run scripts/deploy-mock-usdt.js --network bscTestnet",
     "deploy:factory": "hardhat run scripts/deploy-factory.js --network bscTestnet",
+    "deploy:option-b": "hardhat run scripts/deploy_option_b.js --network bscTestnet",
     "test": "hardhat test"
   },
   "keywords": [],

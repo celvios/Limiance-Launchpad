@@ -11,6 +11,7 @@ export const USDT_ADDRESS =
 export const PAYMENT_ASSET = USDT_ADDRESS;
 export const PANCAKE_ROUTER_ADDRESS = process.env.PANCAKE_ROUTER_ADDRESS ?? ZERO_ADDRESS;
 export const WBNB_ADDRESS = process.env.WBNB_ADDRESS ?? ZERO_ADDRESS;
+export const GRADUATION_DEPLOYER_ADDRESS = process.env.GRADUATION_DEPLOYER_ADDRESS ?? ZERO_ADDRESS;
 export const PIMLICO_API_KEY = process.env.PIMLICO_API_KEY ?? '';
 export const PIMLICO_BUNDLER_URL = process.env.PIMLICO_BUNDLER_URL ?? '';
 export const PIMLICO_PAYMASTER_URL = process.env.PIMLICO_PAYMASTER_URL ?? '';
@@ -43,7 +44,7 @@ function encodeAddress(address: string): string {
 
 function pseudoVaultAddress(userWallet: string, asset: string): string {
   const normalized = normalizeAddress(userWallet);
-  const seed = `${FACTORY_ADDRESS.toLowerCase()}:${BSC_CHAIN_ID}:${normalized}:${normalizeAddress(asset)}`;
+  const seed = `${TREASURY_ADDRESS.toLowerCase()}:${BSC_CHAIN_ID}:${normalized}:${normalizeAddress(asset)}`;
   let hash = 0n;
   for (const char of seed) {
     hash = (hash * 31n + BigInt(char.charCodeAt(0))) & ((1n << 160n) - 1n);
@@ -54,7 +55,8 @@ function pseudoVaultAddress(userWallet: string, asset: string): string {
 export async function predictVaultAddress(userWallet: string, asset = PAYMENT_ASSET): Promise<string> {
   const user = normalizeAddress(userWallet);
   const paymentAsset = normalizeAddress(asset);
-  if (FACTORY_ADDRESS === ZERO_ADDRESS || paymentAsset === ZERO_ADDRESS) {
+  // Use the CentralTreasury's predictedDepositVault view function
+  if (TREASURY_ADDRESS === ZERO_ADDRESS || paymentAsset === ZERO_ADDRESS) {
     return pseudoVaultAddress(user, paymentAsset);
   }
 
@@ -66,7 +68,7 @@ export async function predictVaultAddress(userWallet: string, asset = PAYMENT_AS
       jsonrpc: '2.0',
       id: 1,
       method: 'eth_call',
-      params: [{ to: FACTORY_ADDRESS, data }, 'latest'],
+      params: [{ to: TREASURY_ADDRESS, data }, 'latest'],
     }),
   });
   if (!res.ok) throw new Error(`BSC RPC error: ${res.status}`);

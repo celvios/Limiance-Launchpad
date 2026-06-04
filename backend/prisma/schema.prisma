@@ -37,7 +37,7 @@ model Token {
   curveParamC         BigInt
 
   // Lifecycle
-  status              String    @default("active")  // "active" | "graduated" | "cancelled"
+  status              String    @default("active")  // "active" | "graduating" | "graduated" | "cancelled"
   dexPoolAddress      String?
 
   // Timestamps
@@ -281,6 +281,29 @@ model CommentUpvote {
 
   @@unique([commentId, walletAddress])
   @@index([commentId])
+}
+
+model IndexerState {
+  id                 String   @id // e.g. "deposit_indexer"
+  lastBlockProcessed BigInt
+  updatedAt          DateTime @updatedAt
+}
+
+model WithdrawalRequest {
+  id          String   @id @default(cuid())
+  userId      String?
+  userWallet  String
+  asset       String
+  amount      BigInt
+  destination String
+  status      String   @default("pending") // pending, processing, completed, failed
+  txHash      String?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([userWallet])
 }
 
 
