@@ -9,7 +9,7 @@ export const FACTORY_ADDRESS =
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 export const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS ?? ZERO_ADDRESS;
 export const USDT_ADDRESS =
-  process.env.USDT_ADDRESS ?? process.env.BSC_USDT_ADDRESS ?? ZERO_ADDRESS;
+  (process.env.USDT_ADDRESS ?? process.env.BSC_USDT_ADDRESS ?? ZERO_ADDRESS).toLowerCase().trim();
 export const PAYMENT_ASSET = USDT_ADDRESS;
 export const PANCAKE_ROUTER_ADDRESS = process.env.PANCAKE_ROUTER_ADDRESS ?? ZERO_ADDRESS;
 export const WBNB_ADDRESS = process.env.WBNB_ADDRESS ?? ZERO_ADDRESS;
