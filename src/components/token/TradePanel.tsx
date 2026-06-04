@@ -59,9 +59,9 @@ export function TradePanel({ token }: TradePanelProps) {
         paramB: BigInt(Math.round((cp.k ?? 0.002) * 1e6)),
         paramC: BigInt(Math.round(cp.midpoint ?? cp.s0 ?? token.currentSupply * 0.5)),
       };
-      const sellWei = BigInt(Math.round(inputAmount * 1e18));
-      const returnWei = onChainSellReturn('sigmoid', params, BigInt(token.totalSupply), BigInt(token.currentSupply), sellWei);
-      const usdtReturn = Number(returnWei) / 1e6; // platform USDT is 6 dp
+      const sellRawTokens = BigInt(Math.round(inputAmount));
+      const returnWei = onChainSellReturn('sigmoid', params, BigInt(token.totalSupply), BigInt(token.currentSupply), sellRawTokens);
+      const usdtReturn = Number(returnWei) / 1e18; // returnWei is WEI scale (1e18), need to convert back to normal decimal USDT
       return { usdtReturn };
     } catch {
       return null;
