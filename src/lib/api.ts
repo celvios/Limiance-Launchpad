@@ -404,16 +404,23 @@ export async function postComment(
   mint: string,
   text: string,
   walletAddress: string,
-  token: string | null
+  token: string | null,
+  parentId?: string
 ): Promise<Comment> {
   if (USE_MOCK) {
     await delay(500);
     return {
       id: `comment-new-${Date.now()}`,
       tokenMint: mint,
+      parentId: parentId ?? null,
       walletAddress,
       walletHandle: null,
       text,
+      likeCount: 0,
+      dislikeCount: 0,
+      viewerReaction: null,
+      replyCount: 0,
+      replies: [],
       upvotes: 0,
       hasUpvoted: false,
       timestamp: Date.now(),
@@ -425,7 +432,7 @@ export async function postComment(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, walletAddress }),
+      body: JSON.stringify({ message: text, walletAddress, parentId }),
     },
     token
   );
@@ -435,6 +442,51 @@ export async function postComment(
   }
   const data = await res.json() as { comment: Comment };
   return data.comment;
+}
+
+export async function reactToComment(
+  commentId: string,
+  walletAddress: string,
+  type: 'like' | 'dislike',
+  token: string | null
+): Promise<{
+  likeCount: number;
+  dislikeCount: number;
+  viewerReaction: 'like' | 'dislike' | null;
+  upvotes: number;
+  hasUpvoted: boolean;
+}> {
+  if (USE_MOCK) {
+    await delay(200);
+    return {
+      likeCount: type === 'like' ? 1 : 0,
+      dislikeCount: type === 'dislike' ? 1 : 0,
+      viewerReaction: type,
+      upvotes: type === 'like' ? 1 : 0,
+      hasUpvoted: type === 'like',
+    };
+  }
+
+  const res = await authFetch(
+    `${API_BASE_URL}/comments/${commentId}/reaction`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress, type }),
+    },
+    token
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `API error: ${res.status}`);
+  }
+  return res.json() as Promise<{
+    likeCount: number;
+    dislikeCount: number;
+    viewerReaction: 'like' | 'dislike' | null;
+    upvotes: number;
+    hasUpvoted: boolean;
+  }>;
 }
 
 export async function upvoteComment(

@@ -5,33 +5,36 @@ import { useUIStore } from '@/store/uiStore';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { formatTimeAgo } from '@/lib/format';
+import { ipfsToGateway } from '@/lib/pinata';
+import { useWallet } from '@/providers/BscWalletProvider';
+import { usePostComment } from '@/hooks/useComments';
 import type { TokenCardData } from '@/lib/types';
 
 export function CommentModal() {
-  const { activeModal, closeModal, modalData, addToast } = useUIStore();
+  const { activeModal, closeModal, modalData, addToast, openWalletDrawer } = useUIStore();
+  const { address } = useWallet();
   const [commentText, setCommentText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const token = modalData as TokenCardData | null;
   const isOpen = activeModal === 'comment-modal' && !!token;
+  const postMutation = usePostComment(token?.mint ?? '');
 
   if (!isOpen || !token) return null;
 
   const handleSubmit = async () => {
     if (!commentText.trim()) return;
-    
-    setIsSubmitting(true);
+    if (!address) {
+      openWalletDrawer();
+      return;
+    }
+
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
+      await postMutation.mutateAsync({ text: commentText.trim(), walletAddress: address });
       addToast({ type: 'success', message: 'Reply posted!' });
       setCommentText('');
       closeModal();
     } catch (e) {
       addToast({ type: 'error', message: 'Failed to post reply' });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -60,7 +63,15 @@ export function CommentModal() {
             flexShrink: 0, zIndex: 1,
             overflow: 'hidden'
           }}>
-            {token.symbol.slice(0, 2)}
+            {token.imageUri ? (
+              <img
+                src={ipfsToGateway(token.imageUri)}
+                alt={token.symbol}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              token.symbol.slice(0, 2)
+            )}
           </div>
           
           <div style={{ flex: 1, paddingBottom: 'var(--space-2)' }}>
@@ -124,10 +135,10 @@ export function CommentModal() {
                 variant="primary" 
                 size="sm" 
                 onClick={handleSubmit} 
-                disabled={!commentText.trim() || isSubmitting}
+                disabled={!commentText.trim() || postMutation.isPending}
                 style={{ borderRadius: '9999px', paddingLeft: '24px', paddingRight: '24px' }}
               >
-                {isSubmitting ? 'Posting...' : 'Reply'}
+                {postMutation.isPending ? 'Posting...' : 'Reply'}
               </Button>
             </div>
           </div>

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { Tabs } from '@/components/ui/Tabs';
 import { CommentItem } from '@/components/social/CommentItem';
-import { useComments, usePostComment, useUpvoteComment } from '@/hooks/useComments';
+import { useComments, usePostComment, useReactToComment } from '@/hooks/useComments';
 import type { CommentSort } from '@/lib/types';
 
 const SORT_TABS = [
@@ -23,7 +23,7 @@ export function CommentSection({ mint }: CommentSectionProps) {
 
   const { data, isLoading, isError } = useComments(mint, sort);
   const postMutation = usePostComment(mint);
-  const upvoteMutation = useUpvoteComment(mint);
+  const reactionMutation = useReactToComment(mint);
 
   const handlePost = () => {
     if (!text.trim() || !address) return;
@@ -31,6 +31,11 @@ export function CommentSection({ mint }: CommentSectionProps) {
       { text: text.trim(), walletAddress: address },
       { onSuccess: () => setText('') }
     );
+  };
+
+  const handleReply = (parentId: string, replyText: string) => {
+    if (!replyText.trim() || !address) return;
+    postMutation.mutate({ text: replyText.trim(), walletAddress: address, parentId });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -230,7 +235,9 @@ export function CommentSection({ mint }: CommentSectionProps) {
             <CommentItem
               key={comment.id}
               comment={comment}
-              onUpvote={(id) => upvoteMutation.mutate(id)}
+              canReply={connected}
+              onReply={handleReply}
+              onReact={(id, type) => reactionMutation.mutate({ commentId: id, type })}
             />
           ))}
         </div>

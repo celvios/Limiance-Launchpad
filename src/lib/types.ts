@@ -185,10 +185,16 @@ export type ProfileTab = 'created' | 'holdings' | 'trades' | 'comments';
 export interface Comment {
   id: string;
   tokenMint: string;
+  parentId?: string | null;
   walletAddress: string;
   walletHandle: string | null;
   profilePicUri?: string | null;
   text: string;
+  likeCount?: number;
+  dislikeCount?: number;
+  viewerReaction?: 'like' | 'dislike' | null;
+  replyCount?: number;
+  replies?: Comment[];
   upvotes: number;
   hasUpvoted: boolean; // relative to current user
   timestamp: number;

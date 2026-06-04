@@ -2,31 +2,47 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ArrowUp } from 'lucide-react';
+import { MessageCircle, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { formatAddress, formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import type { Comment } from '@/lib/types';
 
 interface CommentItemProps {
   comment: Comment;
-  onUpvote: (commentId: string) => void;
+  canReply: boolean;
+  onReply: (commentId: string, text: string) => void;
+  onReact: (commentId: string, type: 'like' | 'dislike') => void;
+  depth?: number;
 }
 
-export function CommentItem({ comment, onUpvote }: CommentItemProps) {
+export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: CommentItemProps) {
+  const [isReplying, setIsReplying] = React.useState(false);
+  const [replyText, setReplyText] = React.useState('');
   const displayName = comment.walletHandle
     ? `@${comment.walletHandle}`
     : formatAddress(comment.walletAddress);
+  const likeCount = comment.likeCount ?? comment.upvotes ?? 0;
+  const dislikeCount = comment.dislikeCount ?? 0;
+
+  const submitReply = () => {
+    if (!replyText.trim()) return;
+    onReply(comment.id, replyText.trim());
+    setReplyText('');
+    setIsReplying(false);
+  };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 'var(--space-3)',
-        padding: 'var(--space-3) 0',
-        borderBottom: '1px solid var(--border)',
-        animation: 'cardEnter 200ms var(--ease-default) both',
-      }}
-    >
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-3) 0',
+          borderBottom: depth === 0 ? '1px solid var(--border)' : 'none',
+          animation: 'cardEnter 200ms var(--ease-default) both',
+          marginLeft: depth > 0 ? 'var(--space-6)' : 0,
+        }}
+      >
       {/* Avatar */}
       <Link
         href={`/profile/${comment.walletAddress}`}
@@ -107,39 +123,150 @@ export function CommentItem({ comment, onUpvote }: CommentItemProps) {
           {comment.text}
         </p>
 
-        {/* Upvote */}
-        <button
-          onClick={() => onUpvote(comment.id)}
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+          <button
+          onClick={() => onReact(comment.id, 'like')}
+          disabled={!canReply}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '4px',
-            marginTop: 'var(--space-2)',
             padding: '2px var(--space-2)',
-            background: comment.hasUpvoted ? 'var(--buy-dim)' : 'transparent',
+            background: comment.viewerReaction === 'like' ? 'var(--buy-dim)' : 'transparent',
             border: 'none',
             borderRadius: 'var(--radius-sm)',
             fontFamily: 'var(--font-mono)',
             fontSize: '12px',
-            color: comment.hasUpvoted ? 'var(--buy)' : 'var(--text-muted)',
-            cursor: 'pointer',
+            color: comment.viewerReaction === 'like' ? 'var(--buy)' : 'var(--text-muted)',
+            cursor: canReply ? 'pointer' : 'not-allowed',
             transition: 'all var(--duration-fast)',
           }}
           onMouseEnter={(e) => {
-            if (!comment.hasUpvoted) {
+            if (comment.viewerReaction !== 'like') {
               e.currentTarget.style.color = 'var(--text-secondary)';
             }
           }}
           onMouseLeave={(e) => {
-            if (!comment.hasUpvoted) {
+            if (comment.viewerReaction !== 'like') {
               e.currentTarget.style.color = 'var(--text-muted)';
             }
           }}
         >
-          <ArrowUp size={12} />
-          {comment.upvotes}
-        </button>
+          <ThumbsUp size={12} />
+          {likeCount}
+          </button>
+          <button
+            onClick={() => onReact(comment.id, 'dislike')}
+            disabled={!canReply}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px var(--space-2)',
+              background: comment.viewerReaction === 'dislike' ? 'rgba(255, 77, 109, 0.12)' : 'transparent',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              color: comment.viewerReaction === 'dislike' ? 'var(--sell)' : 'var(--text-muted)',
+              cursor: canReply ? 'pointer' : 'not-allowed',
+              transition: 'all var(--duration-fast)',
+            }}
+          >
+            <ThumbsDown size={12} />
+            {dislikeCount}
+          </button>
+          <button
+            onClick={() => setIsReplying((value) => !value)}
+            disabled={!canReply}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px var(--space-2)',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              fontFamily: 'var(--font-ui)',
+              fontSize: '12px',
+              color: canReply ? 'var(--text-muted)' : 'var(--text-disabled)',
+              cursor: canReply ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <MessageCircle size={12} />
+            Reply
+          </button>
+        </div>
+
+        {isReplying && (
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value.slice(0, 280))}
+              placeholder="Write a reply..."
+              autoFocus
+              style={{
+                width: '100%',
+                minHeight: 56,
+                padding: 'var(--space-2)',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: '13px',
+                color: 'var(--text-primary)',
+                resize: 'vertical',
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
+              <button
+                onClick={() => {
+                  setReplyText('');
+                  setIsReplying(false);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitReply}
+                disabled={!replyText.trim()}
+                style={{
+                  background: replyText.trim() ? 'var(--brand)' : 'var(--bg-elevated)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  color: replyText.trim() ? 'white' : 'var(--text-muted)',
+                  cursor: replyText.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  padding: 'var(--space-1) var(--space-3)',
+                }}
+              >
+                Reply
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+      {comment.replies?.map((reply) => (
+        <CommentItem
+          key={reply.id}
+          comment={reply}
+          canReply={canReply}
+          onReply={onReply}
+          onReact={onReact}
+          depth={depth + 1}
+        />
+      ))}
     </div>
   );
 }
