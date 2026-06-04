@@ -43,10 +43,11 @@ function toWei(value: number): bigint {
 
 function serializeToken(token: any) {
   const tokenAddress = token.tokenAddress ?? token.mint;
-  const supply = BigInt(token.currentSupply.toString());
-  const cap = BigInt(token.supplyCap.toString());
-  const price = BigInt(token.curveParamA.toString());
-  const marketCap = cap > 0n ? (price * supply) / 1_000_000_000_000_000_000n : 0n;
+  const supply = Number(token.currentSupply.toString());
+  const cap = Number(token.supplyCap.toString());
+  const pMax = Number(token.curveParamA.toString()) / 1e18;
+  const pMin = Number(token.curveParamB.toString()) / 1e18;
+  const marketCap = cap > 0 ? pMax * supply : 0;
 
   return {
     tokenAddress,
@@ -61,24 +62,24 @@ function serializeToken(token: any) {
     curveType: 'sigmoid',
     curveParams: {
       type: 'sigmoid',
-      pMin: Number(token.curveParamB) / 1e18,
-      pMax: Number(token.curveParamA) / 1e18,
+      pMin,
+      pMax,
       k: Number(token.curveParamC) / 1e6,
       midpoint: Number(token.graduationThreshold),
     },
-    currentSupply: Number(supply),
-    supplyCap: Number(cap),
+    currentSupply: supply,
+    supplyCap: cap,
     graduationThreshold: Number(token.graduationThreshold),
     status: token.status,
-    price: Number(price) / 1e18,
+    price: pMax,
     priceChange24h: 0,
-    marketCap: Number(marketCap) / 1e18,
+    marketCap,
     commentCount: 0,
     sparklineData: [],
     volume24h: 0,
     holderCount: 0,
-    totalSupply: Number(cap),
-    basePrice: Number(token.curveParamB) / 1e18,
+    totalSupply: cap,
+    basePrice: pMin,
     platformFee: 3,
     totalRaised: 0,
     dexPoolAddress: token.dexPoolAddress ?? null,
@@ -92,62 +93,70 @@ export async function tokenRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
     }
 
-    const body = parsed.data;
-    const creator = normalizeAddress(body.creator);
-    const tokenAddress = pseudoAddress(`${creator}:${body.symbol}:${Date.now()}`);
-    const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
-    const supplyCap = BigInt(body.totalSupply) * 1_000_000_000_000_000_000n;
-    const graduationThreshold = (supplyCap * BigInt(body.graduationThreshold)) / 100n;
+    try {
+      const body = parsed.data;
+      const creator = normalizeAddress(body.creator);
+      const tokenAddress = pseudoAddress(`${creator}:${body.symbol}:${Date.now()}`);
+      const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
+      const supplyCap = BigInt(body.totalSupply);
+      const graduationThreshold = (supplyCap * BigInt(body.graduationThreshold)) / 100n;
 
-    const token = await prisma.token.create({
-      data: {
-        mint: tokenAddress,
-        tokenAddress,
-        saleAddress,
-        chainId: BSC_CHAIN_ID,
-        creator,
-        name: body.name,
-        symbol: body.symbol.toUpperCase(),
-        uri: body.imageUri,
-        description: body.description,
-        supplyCap,
-        currentSupply: BigInt(body.initialBuyAmount) * 1_000_000_000_000_000_000n,
-        graduationThreshold,
-        creatorAllocation: 0,
-        curveType: 'sigmoid',
-        curveParamA: toWei(body.curveParams.pMax ?? 0.1),
-        curveParamB: toWei(body.curveParams.pMin ?? 0.00001),
-        curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
-        status: 'active',
-      },
-    });
-
-    if (body.initialBuyAmount > 0) {
-      await prisma.trade.create({
+      const token = await prisma.token.create({
         data: {
-          tokenMint: tokenAddress,
+          mint: tokenAddress,
           tokenAddress,
-          walletAddress: creator,
-          type: 'buy',
-          amount: BigInt(body.initialBuyAmount) * 1_000_000_000_000_000_000n,
-          solAmount: 0n, // Legacy
-          paymentAmount: 0n, // Approximated for simulation
-          paymentAsset: '0x0000000000000000000000000000000000000000',
-          pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
-          txSignature: `initial-buy-${token.id}`,
-          timestamp: new Date(),
-          isWhale: false,
+          saleAddress,
+          chainId: BSC_CHAIN_ID,
+          creator,
+          name: body.name,
+          symbol: body.symbol.toUpperCase(),
+          uri: body.imageUri,
+          description: body.description,
+          supplyCap,
+          currentSupply: BigInt(body.initialBuyAmount),
+          graduationThreshold,
+          creatorAllocation: 0,
+          curveType: 'sigmoid',
+          curveParamA: toWei(body.curveParams.pMax ?? 0.1),
+          curveParamB: toWei(body.curveParams.pMin ?? 0.00001),
+          curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
+          status: 'active',
         },
       });
-    }
 
-    return reply.code(201).send({
-      success: true,
-      tokenAddress,
-      saleAddress,
-      mint: tokenAddress,
-      txSignature: `pending:${token.id}`,
-    });
+      if (body.initialBuyAmount > 0) {
+        await prisma.trade.create({
+          data: {
+            tokenMint: tokenAddress,
+            tokenAddress,
+            walletAddress: creator,
+            type: 'buy',
+            amount: BigInt(body.initialBuyAmount),
+            solAmount: 0n,
+            paymentAmount: 0n,
+            paymentAsset: '0x0000000000000000000000000000000000000000',
+            pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
+            txSignature: `initial-buy-${token.id}`,
+            timestamp: new Date(),
+            isWhale: false,
+          },
+        });
+      }
+
+      return reply.code(201).send({
+        success: true,
+        tokenAddress,
+        saleAddress,
+        mint: tokenAddress,
+        txSignature: `pending:${token.id}`,
+      });
+    } catch (err) {
+      console.error('[tokens/deploy] Error:', err);
+      return reply.code(500).send({
+        error: err instanceof Error ? err.message : 'Internal server error',
+        code: 'INTERNAL_ERROR',
+      });
+    }
   });
 
   app.get('/api/tokens/check-name', async (req, reply) => {
