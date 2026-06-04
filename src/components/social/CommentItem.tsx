@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowUp } from 'lucide-react';
 import { formatAddress, formatTimeAgo } from '@/lib/format';
+import { ipfsToGateway } from '@/lib/pinata';
 import type { Comment } from '@/lib/types';
 
 interface CommentItemProps {
@@ -49,7 +50,7 @@ export function CommentItem({ comment, onUpvote }: CommentItemProps) {
         >
           {comment.profilePicUri ? (
             <img
-              src={comment.profilePicUri}
+              src={ipfsToGateway(comment.profilePicUri)}
               alt=""
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />

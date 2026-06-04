@@ -308,19 +308,36 @@ export async function profileRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({
-        tokens: tokens.map((t) => ({
-          mint: t.mint,
-          symbol: t.symbol,
-          name: t.name,
-          imageUri: t.uri,
-          description: t.description,
-          curveType: t.curveType,
-          status: t.status,
-          currentSupply: t.currentSupply.toString(),
-          supplyCap: t.supplyCap.toString(),
-          graduationThreshold: t.graduationThreshold.toString(),
-          createdAt: t.createdAt.toISOString(),
-        })),
+        tokens: tokens.map((t) => {
+          const supply = Number(t.currentSupply);
+          const cap = Number(t.supplyCap);
+          const pMax = Number(t.curveParamA) / 1e18;
+          const pMin = Number(t.curveParamB) / 1e18;
+          const price = pMin + (pMax - pMin) * (cap > 0 ? supply / cap : 0);
+          const tokenAddress = t.tokenAddress ?? t.mint;
+          return {
+            tokenAddress,
+            mint: tokenAddress,
+            symbol: t.symbol,
+            name: t.name,
+            imageUri: t.uri,
+            description: t.description,
+            creatorWallet: t.creator,
+            creatorHandle: null,
+            curveType: t.curveType,
+            status: t.status,
+            price,
+            priceChange24h: 0,
+            marketCap: price * supply,
+            sparklineData: [],
+            currentSupply: supply,
+            graduationThreshold: Number(t.graduationThreshold),
+            holderCount: 0,
+            commentCount: 0,
+            volume24h: 0,
+            createdAt: t.createdAt.getTime(),
+          };
+        }),
       });
     }
   );

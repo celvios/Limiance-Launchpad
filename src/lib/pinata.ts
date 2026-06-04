@@ -4,9 +4,24 @@
  * The Next.js API route at /api/upload proxies this for the client.
  */
 
+const IPFS_GATEWAY = process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL || 'https://gateway.pinata.cloud';
+
+/**
+ * Convert an ipfs:// URI to a usable HTTPS gateway URL.
+ * Pass through anything that is already http/https.
+ */
+export function ipfsToGateway(uri: string | null | undefined): string {
+  if (!uri) return '';
+  if (uri.startsWith('ipfs://')) {
+    const cid = uri.replace('ipfs://', '');
+    return `${IPFS_GATEWAY}/ipfs/${cid}`;
+  }
+  return uri;
+}
+
 /**
  * Upload a file to Pinata IPFS via the Next.js API route.
- * Returns the IPFS URI (ipfs://CID) on success.
+ * Returns the gateway HTTPS URL on success (browser-loadable).
  */
 export async function uploadToIPFS(file: File): Promise<string> {
   const formData = new FormData();
@@ -23,5 +38,6 @@ export async function uploadToIPFS(file: File): Promise<string> {
   }
 
   const data = (await res.json()) as { ipfsUri: string; gatewayUrl: string };
-  return data.ipfsUri;
+  // Return the HTTPS gateway URL so it works directly in <img> tags
+  return data.gatewayUrl || ipfsToGateway(data.ipfsUri);
 }

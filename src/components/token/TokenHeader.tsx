@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { Share2, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { WatchlistButton } from '@/components/social/WatchlistButton';
-import { FollowButton } from '@/components/social/FollowButton';
 import { formatTimeAgo } from '@/lib/format';
+import { ipfsToGateway } from '@/lib/pinata';
 import type { TokenDetail } from '@/lib/types';
 
 interface TokenHeaderProps {
@@ -68,7 +68,7 @@ export function TokenHeader({ token }: TokenHeaderProps) {
         >
           {token.imageUri ? (
             <img 
-              src={token.imageUri} 
+              src={ipfsToGateway(token.imageUri)} 
               alt={token.symbol} 
               style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
             />
@@ -148,7 +148,7 @@ export function TokenHeader({ token }: TokenHeaderProps) {
               >
                 {token.creatorPicUri ? (
                   <img 
-                    src={token.creatorPicUri} 
+                    src={ipfsToGateway(token.creatorPicUri)} 
                     alt="" 
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                   />

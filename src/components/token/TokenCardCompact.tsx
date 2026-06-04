@@ -3,6 +3,7 @@
 import React, { memo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { formatNumber } from '@/lib/format';
+import { ipfsToGateway } from '@/lib/pinata';
 import type { TokenCardData } from '@/lib/types';
 
 /* ── TokenCardCompact ──
@@ -82,7 +83,7 @@ export const TokenCardCompact = memo(function TokenCardCompact({
             gap: 'var(--space-2)',
           }}
         >
-          {/* Token image placeholder */}
+          {/* Token image */}
           <div
             style={{
               width: 36,
@@ -97,9 +98,19 @@ export const TokenCardCompact = memo(function TokenCardCompact({
               fontSize: '14px',
               color: 'var(--text-muted)',
               flexShrink: 0,
+              overflow: 'hidden',
             }}
           >
-            {symbol.slice(0, 2)}
+            {token.imageUri ? (
+              <img
+                src={ipfsToGateway(token.imageUri)}
+                alt={symbol}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              symbol.slice(0, 2)
+            )}
           </div>
           <span
             style={{
@@ -116,12 +127,11 @@ export const TokenCardCompact = memo(function TokenCardCompact({
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: '12px',
-              color:
-                priceChange24h >= 0 ? 'var(--buy)' : 'var(--sell)',
+              color: (priceChange24h ?? 0) >= 0 ? 'var(--buy)' : 'var(--sell)',
             }}
           >
-            {priceChange24h >= 0 ? '+' : ''}
-            {priceChange24h.toFixed(1)}%
+            {(priceChange24h ?? 0) >= 0 ? '+' : ''}
+            {(priceChange24h ?? 0).toFixed(1)}%
           </span>
         </div>
 
