@@ -20,6 +20,7 @@ import { MenuDrawer } from '@/components/mobile-nav/MenuDrawer';
 import { CommentModal } from '@/components/token/CommentModal';
 import { MobileLivePulse } from '@/components/layout/MobileLivePulse';
 import { LiveActivitySheet } from '@/components/layout/LiveActivitySheet';
+import { DepositDetectedModal } from '@/components/wallet/DepositDetectedModal';
 
 import { PrivyProvider } from '@privy-io/react-auth';
 import { BSC_CHAIN_ID, BSC_RPC_URL, PRIVY_APP_ID } from '@/lib/constants';
@@ -88,6 +89,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       <CommentModal />
       <MobileLivePulse />
       <LiveActivitySheet />
+      <DepositDetectedModal />
     </>
   );
 }
