@@ -161,45 +161,46 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
         {activeTab === 'deposit' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
 
-            {/* Vault address (both user types) */}
-            <div>
-              <label style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                {isWalletUser ? 'Your Deposit Vault Address' : 'Send USDT to this address (from any exchange or wallet)'}
-              </label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  readOnly
-                  value={depositAddress ?? 'Generating address...'}
-                  style={{
-                    flex: 1, padding: 'var(--space-2) var(--space-3)',
-                    background: 'var(--bg-base)', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)', color: 'var(--text-secondary)',
-                    fontFamily: 'var(--font-mono)', fontSize: '12px', outline: 'none',
-                  }}
-                />
-                <button
-                  onClick={copyAddress}
-                  disabled={!depositAddress}
-                  style={{
-                    padding: '0 var(--space-3)', background: copied ? 'var(--buy)' : 'var(--bg-elevated)',
-                    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                    color: copied ? '#fff' : 'var(--text-primary)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 4, fontSize: 13,
-                    fontFamily: 'var(--font-ui)', fontWeight: 600, transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <p style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>
-                {isWalletUser
-                  ? 'Send BEP-20 USDT to this address. Your balance will update within 30 seconds.'
-                  : 'BEP-20 USDT only. Balance updates automatically after the transaction confirms.'}
-              </p>
-            </div>
-
-            <div style={{ height: 1, background: 'var(--border)' }} />
+            {/* Vault address (Email users only, or if we want to allow manual copy-paste for wallets later) */}
+            {!isWalletUser && (
+              <>
+                <div>
+                  <label style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                    Send USDT to this address (from any exchange or wallet)
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      readOnly
+                      value={depositAddress ?? 'Generating address...'}
+                      style={{
+                        flex: 1, padding: 'var(--space-2) var(--space-3)',
+                        background: 'var(--bg-base)', border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-md)', color: 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)', fontSize: '12px', outline: 'none',
+                      }}
+                    />
+                    <button
+                      onClick={copyAddress}
+                      disabled={!depositAddress}
+                      style={{
+                        padding: '0 var(--space-3)', background: copied ? 'var(--buy)' : 'var(--bg-elevated)',
+                        border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                        color: copied ? '#fff' : 'var(--text-primary)', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 4, fontSize: 13,
+                        fontFamily: 'var(--font-ui)', fontWeight: 600, transition: 'all 0.15s',
+                      }}
+                    >
+                      {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>
+                    BEP-20 USDT only. Balance updates automatically after the transaction confirms.
+                  </p>
+                </div>
+                <div style={{ height: 1, background: 'var(--border)' }} />
+              </>
+            )}
 
             {/* Wallet users: send directly from connected wallet */}
             {isWalletUser && (
@@ -241,12 +242,12 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
                     background: 'var(--brand)', color: '#fff', border: 'none',
                     borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-ui)',
                     fontWeight: 600, fontSize: '15px',
-                    cursor: walletTxPending || !amount ? 'not-allowed' : 'pointer',
-                    opacity: walletTxPending || !amount ? 0.7 : 1,
+                    cursor: walletTxPending || !amount || !depositAddress ? 'not-allowed' : 'pointer',
+                    opacity: walletTxPending || !amount || !depositAddress ? 0.7 : 1,
                     display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8,
                   }}
                 >
-                  {walletTxPending ? <Loader2 size={18} className="animate-spin" /> : 'Deposit via Wallet'}
+                  {walletTxPending ? <Loader2 size={18} className="animate-spin" /> : !depositAddress ? 'Initializing...' : 'Confirm Deposit'}
                 </button>
               </>
             )}
