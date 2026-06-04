@@ -29,7 +29,7 @@ export async function runIndexer() {
       const currentBlock = await provider.getBlockNumber();
       if (currentBlock <= lastProcessedBlock) return; // Wait for new blocks
 
-      const targetBlock = Math.min(currentBlock, lastProcessedBlock + 500); // Batch size 500
+      const targetBlock = Math.min(currentBlock, lastProcessedBlock + 10); // Batch size 10 (Alchemy Free Tier limit)
       // console.log(`[Indexer] Syncing blocks ${lastProcessedBlock + 1} to ${targetBlock}`);
 
       const filter = paymentContract.filters.Transfer(null, null);
