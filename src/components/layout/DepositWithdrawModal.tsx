@@ -52,23 +52,27 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
 
   // ── Step 2: poll for balance change after showing address ──────────────────
   useEffect(() => {
-    if (depositStep !== 2) {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      return;
+    if (depositStep === 2) {
+      // Capture the baseline balance when entering step 2
+      const baselineBalance = totalAvailableUSDT;
+
+      pollingRef.current = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+      }, 3000);
+
+      return () => {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+      };
     }
-    prevBalanceRef.current = totalAvailableUSDT;
-    pollingRef.current = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['userBalance'] });
-    }, 5000);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [depositStep, queryClient, totalAvailableUSDT]);
+  }, [depositStep, queryClient]); // Do NOT depend on totalAvailableUSDT here!
 
   // Detect when balance increases and move to step 3
   useEffect(() => {
     if (depositStep === 2 && totalAvailableUSDT > prevBalanceRef.current) {
       setDepositStep(3);
+    } else if (depositStep === 1) {
+      prevBalanceRef.current = totalAvailableUSDT;
     }
-    prevBalanceRef.current = totalAvailableUSDT;
   }, [totalAvailableUSDT, depositStep]);
 
   const copyAddress = () => {
