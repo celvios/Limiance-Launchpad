@@ -9,7 +9,6 @@ import { formatNumber } from '@/lib/format';
 import { API_BASE_URL, BSC_CHAIN_ID, DEX_NAME } from '@/lib/constants';
 import { useUserBalance } from '@/hooks/useUserBalance';
 import { useUserTokenBalance } from '@/hooks/useUserTokenBalance';
-import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TokenDetail } from '@/lib/types';
 
@@ -24,7 +23,7 @@ const USDT_PRESETS = [25, 50, 100, 250];
 const SELL_PCTS   = [25, 50, 75, 100];
 
 export function TradePanel({ token }: TradePanelProps) {
-  const { address } = useWallet();
+  const { address, token: authToken } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
   const addToast = useUIStore((s) => s.addToast);
   const queryClient = useQueryClient();
@@ -34,7 +33,6 @@ export function TradePanel({ token }: TradePanelProps) {
   const [txState, setTxState] = useState<TxState>('idle');
 
   const { totalAvailableUSDT, isLoading: balanceLoading } = useUserBalance();
-  const { token: authToken } = useAuth();
 
   // Token balance on platform (for sell tab)
   const tokenId = token.tokenAddress ?? token.mint;

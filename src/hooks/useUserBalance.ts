@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from './useAuth';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { API_BASE_URL, PAYMENT_ASSET } from '@/lib/constants';
 
@@ -12,8 +11,7 @@ interface UserBalance {
 }
 
 export function useUserBalance() {
-  const { token } = useAuth();
-  const { address: wallet } = useWallet();
+  const { address: wallet, token } = useWallet();
   const queryClient = useQueryClient();
 
   // ── USDT balance ──────────────────────────────────────────────────────────

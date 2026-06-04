@@ -35,6 +35,7 @@ interface BscWalletContextValue {
   // Auth (inlined — no circular dependency)
   isAuthenticated: boolean;
   isLoggingIn: boolean;
+  token: string | null;
   login: () => Promise<void>;
   logout: () => void;
   // For embedded wallet (Privy) login
@@ -244,6 +245,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       switchToBsc,
       isAuthenticated: !!token,
       isLoggingIn,
+      token,
       login,
       logout,
       setEmbeddedSession,
