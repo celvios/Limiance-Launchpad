@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
+import { useWallet } from '@/providers/BscWalletProvider';
 
 interface UserBalance {
   walletAddress: string;
@@ -10,7 +11,8 @@ interface UserBalance {
 }
 
 export function useUserBalance() {
-  const { wallet, token } = useAuth();
+  const { token } = useAuth();
+  const { address: wallet } = useWallet();
   const queryClient = useQueryClient();
 
   // Query to fetch the balance

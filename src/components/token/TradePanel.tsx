@@ -7,7 +7,6 @@ import { useUIStore } from '@/store/uiStore';
 import { Button } from '@/components/ui/Button';
 import { calculateBuyPrice } from '@/lib/curve/math';
 import { formatAddress, formatNumber } from '@/lib/format';
-import { formatAddress, formatNumber } from '@/lib/format';
 import { API_BASE_URL, BSC_CHAIN_ID, CHAIN_CURRENCY, DEX_NAME, PAYMENT_ASSET } from '@/lib/constants';
 import { useBuy } from '@/hooks/useTradeTransaction';
 import { useUserBalance } from '@/hooks/useUserBalance';
