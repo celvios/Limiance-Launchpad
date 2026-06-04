@@ -1,131 +1,95 @@
 'use client';
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { AlertTriangle, Copy, QrCode, Wallet } from 'lucide-react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useUIStore } from '@/store/uiStore';
 import { Button } from '@/components/ui/Button';
-import { calculateBuyPrice } from '@/lib/curve/math';
-import { formatAddress, formatNumber } from '@/lib/format';
-import { API_BASE_URL, BSC_CHAIN_ID, CHAIN_CURRENCY, DEX_NAME, PAYMENT_ASSET } from '@/lib/constants';
-import { useBuy } from '@/hooks/useTradeTransaction';
+import { calculateBuyPrice, onChainSellReturn } from '@/lib/curve/math';
+import { formatNumber } from '@/lib/format';
+import { API_BASE_URL, BSC_CHAIN_ID, DEX_NAME } from '@/lib/constants';
 import { useUserBalance } from '@/hooks/useUserBalance';
+import { useUserTokenBalance } from '@/hooks/useUserTokenBalance';
 import { useAuth } from '@/hooks/useAuth';
-import type { DepositAddress, TokenDetail } from '@/lib/types';
+import { useQueryClient } from '@tanstack/react-query';
+import type { TokenDetail } from '@/lib/types';
 
 interface TradePanelProps {
   token: TokenDetail;
 }
 
-type TradeTab = 'wallet' | 'deposit' | 'balance';
+type TradeTab = 'buy' | 'sell';
 type TxState = 'idle' | 'confirming' | 'success' | 'error';
 
 const USDT_PRESETS = [25, 50, 100, 250];
-
-function paymentToBaseUnits(value: number): bigint {
-  return BigInt(Math.round(value * 1e18));
-}
+const SELL_PCTS   = [25, 50, 75, 100];
 
 export function TradePanel({ token }: TradePanelProps) {
-  const { address, connected, chainId, switchToBsc } = useWallet();
+  const { address } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
   const addToast = useUIStore((s) => s.addToast);
-  const [activeTab, setActiveTab] = useState<TradeTab>('balance');
+  const queryClient = useQueryClient();
+
+  const [activeTab, setActiveTab] = useState<TradeTab>('buy');
   const [inputValue, setInputValue] = useState('');
   const [txState, setTxState] = useState<TxState>('idle');
-  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
-  const [isLoadingDeposit, setIsLoadingDeposit] = useState(false);
-  
-  const { buy } = useBuy(token.tokenAddress ?? token.mint);
-  const { totalAvailableUSDT } = useUserBalance();
+
+  const { totalAvailableUSDT, isLoading: balanceLoading } = useUserBalance();
   const { token: authToken } = useAuth();
+
+  // Token balance on platform (for sell tab)
+  const tokenId = token.tokenAddress ?? token.mint;
+  const { tokenBalance, tokenBalanceWei, invalidate: invalidateTokenBal } = useUserTokenBalance(tokenId, address);
 
   const inputAmount = parseFloat(inputValue) || 0;
   const isGraduated = token.status === 'graduated';
-  const wrongNetwork = connected && chainId !== BSC_CHAIN_ID;
-  const displayBalance = Number(totalAvailableUSDT) / 1e6;
+  const usdtBalance = Number(totalAvailableUSDT) / 1e6;
 
+  // ── Buy estimate ──────────────────────────────────────────────────────────
   const buyEstimate = useMemo(() => {
-    if (inputAmount <= 0) return null;
+    if (activeTab !== 'buy' || inputAmount <= 0) return null;
     return calculateBuyPrice(inputAmount, token.currentSupply, token.curveParams);
-  }, [inputAmount, token.currentSupply, token.curveParams]);
+  }, [activeTab, inputAmount, token.currentSupply, token.curveParams]);
 
-  const loadDepositAddress = useCallback(async () => {
-    if (!address) {
-      openWalletDrawer();
-      return;
-    }
-    setIsLoadingDeposit(true);
+  // ── Sell estimate ─────────────────────────────────────────────────────────
+  const sellEstimate = useMemo(() => {
+    if (activeTab !== 'sell' || inputAmount <= 0) return null;
     try {
-      const params = new URLSearchParams({
-        wallet: address,
-        asset: PAYMENT_ASSET,
-        chainId: String(BSC_CHAIN_ID),
-      });
-      const res = await fetch(`${API_BASE_URL}/deposits/address?${params}`);
-      if (!res.ok) throw new Error(`Deposit address failed: ${res.status}`);
-      setDepositAddress(await res.json() as DepositAddress);
-    } catch (error) {
-      addToast({ type: 'error', message: error instanceof Error ? error.message : 'Could not load deposit address' });
-    } finally {
-      setIsLoadingDeposit(false);
+      const cp = token.curveParams as any;
+      const params = {
+        pMin:   BigInt(Math.round((cp.pMin ?? cp.a ?? 0.00001) * 1e18)),
+        paramA: BigInt(Math.round((cp.pMax ?? cp.maxPrice ?? 0.1) * 1e18)),
+        paramB: BigInt(Math.round((cp.k ?? 0.002) * 1e6)),
+        paramC: BigInt(Math.round(cp.midpoint ?? cp.s0 ?? token.currentSupply * 0.5)),
+      };
+      const sellWei = BigInt(Math.round(inputAmount * 1e18));
+      const returnWei = onChainSellReturn('sigmoid', params, BigInt(token.totalSupply), BigInt(token.currentSupply), sellWei);
+      const usdtReturn = Number(returnWei) / 1e6; // platform USDT is 6 dp
+      return { usdtReturn };
+    } catch {
+      return null;
     }
-  }, [address, addToast, openWalletDrawer]);
+  }, [activeTab, inputAmount, token.curveParams, token.currentSupply, token.totalSupply]);
 
-  const executeWalletBuy = useCallback(async () => {
-    if (!connected) {
-      openWalletDrawer();
-      return;
-    }
-    if (wrongNetwork) {
-      await switchToBsc();
-      return;
-    }
+  const invalidateAll = useCallback(() => {
+    invalidateTokenBal();
+    queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+    queryClient.invalidateQueries({ queryKey: ['tokenDetail'] });
+  }, [invalidateTokenBal, queryClient]);
+
+  // ── Execute Buy ───────────────────────────────────────────────────────────
+  const executeBuy = useCallback(async () => {
+    if (!address || !authToken) { openWalletDrawer(); return; }
     if (!buyEstimate || inputAmount <= 0) return;
-
-    setTxState('confirming');
-    try {
-      await buy({
-        amount: BigInt(Math.floor(buyEstimate.tokensOut * 1e18)),
-        quotePayment: paymentToBaseUnits(inputAmount),
-        saleAddress: token.dexPoolAddress ?? token.tokenAddress ?? token.mint,
-      });
-      setTxState('success');
-      addToast({ type: 'success', message: `Bought ${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}` });
-      setInputValue('');
-      setTimeout(() => setTxState('idle'), 1500);
-    } catch (error) {
-      setTxState('error');
-      addToast({ type: 'error', message: error instanceof Error ? error.message : 'Buy failed' });
-      setTimeout(() => setTxState('idle'), 1000);
-    }
-  }, [connected, wrongNetwork, switchToBsc, buyEstimate, inputAmount, buy, token, addToast, openWalletDrawer]);
-
-  const copyDepositAddress = useCallback(async () => {
-    if (!depositAddress) return;
-    await navigator.clipboard.writeText(depositAddress.vaultAddress);
-    addToast({ type: 'success', message: 'Deposit address copied' });
-  }, [depositAddress, addToast]);
-
-  const executeBalanceBuy = useCallback(async () => {
-    if (!address || !authToken) {
-      addToast({ type: 'error', message: 'Please connect and sign in first' });
-      return;
-    }
-    if (!buyEstimate || inputAmount <= 0) return;
-    if (inputAmount > displayBalance) {
-      addToast({ type: 'error', message: 'Insufficient platform balance. Please deposit USDT.' });
+    if (inputAmount > usdtBalance) {
+      addToast({ type: 'error', message: 'Insufficient USDT balance — please deposit more.' });
       return;
     }
 
     setTxState('confirming');
     try {
-      const res = await fetch(`${API_BASE_URL}/tokens/${token.tokenAddress ?? token.mint}/trade`, {
+      const res = await fetch(`${API_BASE_URL}/tokens/${tokenId}/trade`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           wallet: address,
           type: 'buy',
@@ -133,24 +97,60 @@ export function TradePanel({ token }: TradePanelProps) {
           amountTokens: buyEstimate.tokensOut,
         }),
       });
-
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Balance buy failed');
+        throw new Error(data.error || 'Buy failed');
       }
-
       setTxState('success');
-      addToast({ type: 'success', message: `Bought ${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol} instantly!` });
+      addToast({ type: 'success', message: `Bought ${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}!` });
       setInputValue('');
+      invalidateAll();
       setTimeout(() => setTxState('idle'), 1500);
-      // In a real app, invalidate queries here to refresh the token supply and balance
     } catch (error) {
       setTxState('error');
       addToast({ type: 'error', message: error instanceof Error ? error.message : 'Buy failed' });
       setTimeout(() => setTxState('idle'), 1000);
     }
-  }, [address, authToken, buyEstimate, inputAmount, displayBalance, addToast, token]);
+  }, [address, authToken, buyEstimate, inputAmount, usdtBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll]);
 
+  // ── Execute Sell ──────────────────────────────────────────────────────────
+  const executeSell = useCallback(async () => {
+    if (!address || !authToken) { openWalletDrawer(); return; }
+    if (!sellEstimate || inputAmount <= 0) return;
+    if (inputAmount > tokenBalance) {
+      addToast({ type: 'error', message: 'Insufficient token balance.' });
+      return;
+    }
+
+    setTxState('confirming');
+    try {
+      const res = await fetch(`${API_BASE_URL}/tokens/${tokenId}/trade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          wallet: address,
+          type: 'sell',
+          amountUsdt: sellEstimate.usdtReturn,
+          amountTokens: inputAmount,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Sell failed');
+      }
+      setTxState('success');
+      addToast({ type: 'success', message: `Sold ${formatNumber(inputAmount, 0)} ${token.symbol} for ~${sellEstimate.usdtReturn.toFixed(2)} USDT!` });
+      setInputValue('');
+      invalidateAll();
+      setTimeout(() => setTxState('idle'), 1500);
+    } catch (error) {
+      setTxState('error');
+      addToast({ type: 'error', message: error instanceof Error ? error.message : 'Sell failed' });
+      setTimeout(() => setTxState('idle'), 1000);
+    }
+  }, [address, authToken, sellEstimate, inputAmount, tokenBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll]);
+
+  // ── Graduated view ────────────────────────────────────────────────────────
   if (isGraduated) {
     const output = token.dexPoolAddress ?? token.tokenAddress ?? token.mint;
     return (
@@ -167,125 +167,58 @@ export function TradePanel({ token }: TradePanelProps) {
     );
   }
 
+  const notAuthenticated = !address || !authToken;
+
   return (
     <div style={panelStyle}>
+      {/* ── Tab bar ── */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-        {[
-          ['wallet', 'Wallet Buy'],
-          ['deposit', 'Deposit Address'],
-          ['balance', 'Balance Buy'],
-        ].map(([tab, label]) => (
+        {(['buy', 'sell'] as TradeTab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab as TradeTab)}
+            onClick={() => { setActiveTab(tab); setInputValue(''); }}
             style={{
               flex: 1,
               padding: 'var(--space-3)',
-              background: activeTab === tab ? 'var(--buy-dim)' : 'transparent',
+              background: activeTab === tab
+                ? (tab === 'buy' ? 'var(--buy-dim)' : 'var(--sell-dim)')
+                : 'transparent',
               border: 'none',
-              borderBottom: activeTab === tab ? '2px solid var(--buy)' : '2px solid transparent',
-              color: activeTab === tab ? 'var(--buy)' : 'var(--text-muted)',
+              borderBottom: activeTab === tab
+                ? `2px solid var(--${tab})`
+                : '2px solid transparent',
+              color: activeTab === tab
+                ? `var(--${tab})`
+                : 'var(--text-muted)',
               fontFamily: 'var(--font-ui)',
-              fontSize: 12,
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: 1,
               cursor: 'pointer',
+              textTransform: 'uppercase',
+              transition: 'all 0.15s',
             }}
           >
-            {label}
+            {tab}
           </button>
         ))}
       </div>
 
-      {activeTab === 'wallet' && (
-        <div style={bodyStyle}>
-          <label style={labelStyle}>You pay ({CHAIN_CURRENCY})</label>
-          <div style={inputShellStyle}>
-            <input
-              type="number"
-              value={inputValue}
-              onChange={(event) => setInputValue(event.target.value)}
-              placeholder="0.00"
-              disabled={txState === 'confirming'}
-              style={inputStyle}
-            />
-            <span style={unitStyle}>{CHAIN_CURRENCY}</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            {USDT_PRESETS.map((value) => (
-              <button key={value} onClick={() => setInputValue(String(value))} style={presetStyle}>
-                {value} {CHAIN_CURRENCY}
-              </button>
-            ))}
-          </div>
-
-          {buyEstimate && inputAmount > 0 && (
-            <div style={estimateStyle}>
-              <Row label="Receive estimate" value={`${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}`} />
-              <Row label="Average price" value={`${buyEstimate.avgPrice.toFixed(8)} ${CHAIN_CURRENCY}`} />
-              <Row label="Price impact" value={`${buyEstimate.priceImpact.toFixed(2)}%`} />
-              <Row label="Est. Network Fee" value="~0.005 BNB" />
-            </div>
-          )}
-
-          {wrongNetwork && (
-            <div style={warningStyle}>
-              <AlertTriangle size={16} />
-              Switch to BSC Testnet before buying.
-            </div>
-          )}
-
-          <Button
-            variant="buy"
-            size="lg"
-            onClick={executeWalletBuy}
-            disabled={(inputAmount <= 0 && connected && !wrongNetwork) || txState === 'confirming'}
-            isLoading={txState === 'confirming'}
-            style={{ width: '100%' }}
-          >
-            {!connected ? 'CONNECT WALLET' : wrongNetwork ? 'SWITCH TO BSC' : inputAmount > 0 ? `BUY ${token.symbol}` : 'ENTER AMOUNT'}
-          </Button>
-        </div>
-      )}
-
-      {activeTab === 'deposit' && (
-        <div style={bodyStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <QrCode size={18} />
-            <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Generated Deposit Address</div>
-          </div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Send only BEP-20 {CHAIN_CURRENCY} on BSC Testnet. Deposits are credited after confirmations by the backend indexer.
-          </div>
-          {!depositAddress ? (
-            <Button variant="outline" size="md" onClick={loadDepositAddress} isLoading={isLoadingDeposit}>
-              Generate Address
-            </Button>
-          ) : (
-            <div style={estimateStyle}>
-              <Row label="Vault" value={formatAddress(depositAddress.vaultAddress)} />
-              <Row label="Chain" value={`BSC ${depositAddress.chainId}`} />
-              <button onClick={copyDepositAddress} style={copyButtonStyle}>
-                <Copy size={14} />
-                Copy full address
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'balance' && (
+      {/* ── BUY tab ── */}
+      {activeTab === 'buy' && (
         <div style={bodyStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={labelStyle}>You pay (USDT Balance)</label>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
-              Available: {formatNumber(displayBalance)} USDT
+              Available: {balanceLoading ? '...' : formatNumber(usdtBalance)} USDT
             </span>
           </div>
+
           <div style={inputShellStyle}>
             <input
               type="number"
               value={inputValue}
-              onChange={(event) => setInputValue(event.target.value)}
+              onChange={(e) => setInputValue(e.target.value)}
               placeholder="0.00"
               disabled={txState === 'confirming'}
               style={inputStyle}
@@ -294,9 +227,9 @@ export function TradePanel({ token }: TradePanelProps) {
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            {USDT_PRESETS.map((value) => (
-              <button key={value} onClick={() => setInputValue(String(value))} style={presetStyle}>
-                {value} USDT
+            {USDT_PRESETS.map((v) => (
+              <button key={v} onClick={() => setInputValue(String(v))} style={presetStyle}>
+                {v} USDT
               </button>
             ))}
           </div>
@@ -304,25 +237,88 @@ export function TradePanel({ token }: TradePanelProps) {
           {buyEstimate && inputAmount > 0 && (
             <div style={estimateStyle}>
               <Row label="Receive estimate" value={`${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}`} />
-              <Row label="Average price" value={`${buyEstimate.avgPrice.toFixed(8)} USDT`} />
-              <Row label="Price impact" value={`${buyEstimate.priceImpact.toFixed(2)}%`} />
-              <Row label="Platform Fee" value="0.00 USDT" />
+              <Row label="Avg price"        value={`${buyEstimate.avgPrice.toFixed(8)} USDT`} />
+              <Row label="Price impact"     value={`${buyEstimate.priceImpact.toFixed(2)}%`} />
+              <Row label="Platform fee"     value="0.00 USDT" />
             </div>
           )}
 
           <Button
             variant="buy"
             size="lg"
-            onClick={executeBalanceBuy}
-            disabled={inputAmount <= 0 || txState === 'confirming' || inputAmount > displayBalance}
+            onClick={notAuthenticated ? openWalletDrawer : executeBuy}
+            disabled={!notAuthenticated && (inputAmount <= 0 || txState === 'confirming' || inputAmount > usdtBalance)}
             isLoading={txState === 'confirming'}
             style={{ width: '100%' }}
           >
-            {inputAmount > displayBalance 
-              ? 'INSUFFICIENT BALANCE' 
-              : inputAmount > 0 
-                ? `INSTANT BUY ${token.symbol}` 
-                : 'ENTER AMOUNT'}
+            {notAuthenticated
+              ? 'CONNECT WALLET'
+              : inputAmount > usdtBalance
+                ? 'INSUFFICIENT BALANCE'
+                : inputAmount > 0
+                  ? `BUY ${token.symbol}`
+                  : 'ENTER AMOUNT'}
+          </Button>
+        </div>
+      )}
+
+      {/* ── SELL tab ── */}
+      {activeTab === 'sell' && (
+        <div style={bodyStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={labelStyle}>You sell ({token.symbol})</label>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>
+              Balance: {formatNumber(tokenBalance, 2)} {token.symbol}
+            </span>
+          </div>
+
+          <div style={inputShellStyle}>
+            <input
+              type="number"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="0.00"
+              disabled={txState === 'confirming'}
+              style={inputStyle}
+            />
+            <span style={unitStyle}>{token.symbol}</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            {SELL_PCTS.map((pct) => (
+              <button
+                key={pct}
+                onClick={() => setInputValue(String((tokenBalance * pct / 100).toFixed(2)))}
+                style={presetStyle}
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
+
+          {sellEstimate && inputAmount > 0 && (
+            <div style={estimateStyle}>
+              <Row label="You receive"   value={`~${sellEstimate.usdtReturn.toFixed(4)} USDT`} />
+              <Row label="Sell slippage" value="5% (applied)" />
+              <Row label="To wallet"     value="Platform Balance" />
+            </div>
+          )}
+
+          <Button
+            variant="sell"
+            size="lg"
+            onClick={notAuthenticated ? openWalletDrawer : executeSell}
+            disabled={!notAuthenticated && (inputAmount <= 0 || txState === 'confirming' || inputAmount > tokenBalance)}
+            isLoading={txState === 'confirming'}
+            style={{ width: '100%' }}
+          >
+            {notAuthenticated
+              ? 'CONNECT WALLET'
+              : inputAmount > tokenBalance
+                ? 'INSUFFICIENT TOKENS'
+                : inputAmount > 0
+                  ? `SELL ${token.symbol}`
+                  : 'ENTER AMOUNT'}
           </Button>
         </div>
       )}
@@ -405,32 +401,6 @@ const estimateStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 'var(--space-2)',
-};
-
-const warningStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--space-2)',
-  background: 'var(--sell-dim)',
-  color: 'var(--sell)',
-  border: '1px solid var(--sell)',
-  borderRadius: 'var(--radius-md)',
-  padding: 'var(--space-3)',
-  fontFamily: 'var(--font-ui)',
-  fontSize: 13,
-};
-
-const copyButtonStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 'var(--space-2)',
-  padding: 'var(--space-2)',
-  background: 'var(--bg-base)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  color: 'var(--text-primary)',
-  cursor: 'pointer',
 };
 
 const graduatedLinkStyle: React.CSSProperties = {

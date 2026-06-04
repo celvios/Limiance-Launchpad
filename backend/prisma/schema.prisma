@@ -323,5 +323,13 @@ model WithdrawalRequest {
   @@index([userWallet])
 }
 
+model UserTokenBalance {
+  id            String   @id @default(cuid())
+  walletAddress String
+  tokenAddress  String
+  amount        BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
 
-
+  @@unique([walletAddress, tokenAddress])
+  @@index([walletAddress])
+}
