@@ -27,12 +27,16 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
   const { connected, address } = useWallet();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [smartAccountClient, setSmartAccountClient] = useState<any>(null);
   const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
 
   useEffect(() => {
+    // If we already successfully logged in during this session, don't ask to sign again!
+    if (hasLoggedIn || localStorage.getItem('auth_token')) return;
+    
     if (!ready || !authenticated || !user || connected || isLoading) return;
 
     // Find the embedded wallet
