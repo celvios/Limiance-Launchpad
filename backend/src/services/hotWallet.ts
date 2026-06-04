@@ -153,8 +153,8 @@ export async function runHotWalletWorker() {
           where: { id: graduatingToken.id },
           data: {
             status: 'graduated',
-            tokenAddress: deployedTokenAddress.toLowerCase(),
-            dexPoolAddress: dexPoolAddress.toLowerCase(),
+            tokenAddress: (deployedTokenAddress ?? graduatingToken.tokenAddress).toLowerCase(),
+            dexPoolAddress: (dexPoolAddress ?? graduatingToken.tokenAddress).toLowerCase(),
           },
         });
 

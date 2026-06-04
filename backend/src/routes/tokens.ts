@@ -519,6 +519,7 @@ export async function tokenRoutes(app: FastifyInstance) {
 
   // ── POST /api/admin/tokens/:address/reset-status ─────────────────────────────
   // Admin-only: resets a stuck token back to 'active' for testing/recovery.
+  // Pass ?resetSupply=true to also zero out currentSupply (fixes corrupted scale data).
   app.post('/api/admin/tokens/:address/reset-status', async (req, reply) => {
     const secret = (req.headers['x-admin-secret'] as string) ?? '';
     if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
@@ -527,6 +528,7 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     const { address: tokenAddressParam } = req.params as { address: string };
     const tokenAddress = tokenAddressParam.toLowerCase();
+    const { resetSupply } = req.query as { resetSupply?: string };
 
     const token = await prisma.token.findFirst({
       where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
@@ -535,9 +537,12 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     const updated = await prisma.token.update({
       where: { id: token.id },
-      data: { status: 'active' },
+      data: {
+        status: 'active',
+        ...(resetSupply === 'true' ? { currentSupply: 0n } : {}),
+      },
     });
 
-    return reply.send({ success: true, id: updated.id, status: updated.status });
+    return reply.send({ success: true, id: updated.id, status: updated.status, currentSupply: updated.currentSupply.toString() });
   });
 }
