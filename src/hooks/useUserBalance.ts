@@ -16,7 +16,7 @@ export function useUserBalance() {
   const { address: wallet } = useWallet();
   const queryClient = useQueryClient();
 
-  // Query to fetch the balance
+  // ── USDT balance ──────────────────────────────────────────────────────────
   const balanceQuery = useQuery({
     queryKey: ['userBalance', wallet],
     queryFn: async (): Promise<UserBalance[]> => {
@@ -26,50 +26,30 @@ export function useUserBalance() {
       });
       if (!res.ok) throw new Error('Failed to fetch balance');
       const data = await res.json();
-      return data.balances;
+      return data.balances ?? [];
     },
     enabled: !!wallet,
-    refetchInterval: 10000, // Poll every 10s for updates
+    refetchInterval: 8000,
   });
 
+  // ── Deposit address — fetched as soon as wallet + token are present ────────
   const depositAddressQuery = useQuery({
     queryKey: ['depositAddress', wallet],
     queryFn: async (): Promise<string> => {
-      if (!wallet) return '';
+      if (!wallet || !token) return '';
       const res = await fetch(`${API_BASE_URL}/users/me/deposit-address`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch deposit address');
       const data = await res.json();
-      return data.vaultAddress;
+      return data.vaultAddress ?? '';
     },
     enabled: !!wallet && !!token,
+    staleTime: Infinity, // vault address never changes for a given wallet
+    retry: 3,
   });
 
-  // Mutation to mock deposit on testnet
-  const testnetDepositMutation = useMutation({
-    mutationFn: async ({ amount, txHash }: { amount: string; txHash: string }) => {
-      if (!token) throw new Error('Not authenticated');
-      const res = await fetch(`${API_BASE_URL}/deposits/testnet-credit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount, txHash }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to deposit');
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userBalance', wallet] });
-    },
-  });
-
-  // Mutation to withdraw
+  // ── Withdraw ──────────────────────────────────────────────────────────────
   const withdrawMutation = useMutation({
     mutationFn: async ({ amount, destination }: { amount: string; destination: string }) => {
       if (!token) throw new Error('Not authenticated');
@@ -92,19 +72,18 @@ export function useUserBalance() {
     },
   });
 
-  // Helper to get total available USDT (sum of all available, though usually just one row)
+  // Sum all available USDT (zero address = platform USDT)
   const totalAvailableUSDT = balanceQuery.data
-    ?.filter((b) => b.asset === '0x0000000000000000000000000000000000000000') // Native/Default
+    ?.filter((b) => b.asset === '0x0000000000000000000000000000000000000000')
     .reduce((acc, b) => acc + BigInt(b.available), 0n) ?? 0n;
 
   return {
     balances: balanceQuery.data,
-    depositAddress: depositAddressQuery.data,
+    depositAddress: depositAddressQuery.data || null,
     totalAvailableUSDT,
     isLoading: balanceQuery.isLoading || depositAddressQuery.isLoading,
+    isLoadingAddress: depositAddressQuery.isLoading || depositAddressQuery.isFetching,
     error: balanceQuery.error || depositAddressQuery.error,
-    testnetDeposit: testnetDepositMutation.mutateAsync,
-    isDepositing: testnetDepositMutation.isPending,
     withdraw: withdrawMutation.mutateAsync,
     isWithdrawing: withdrawMutation.isPending,
   };

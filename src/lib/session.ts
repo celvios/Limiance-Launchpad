@@ -8,6 +8,7 @@ interface StoredSession {
   authType?: 'wallet' | 'email';
   token: string;
   expiresAt: number;
+  smartAccountAddress?: string;
 }
 
 function storageKey(walletAddress: string) {
@@ -39,6 +40,7 @@ export function saveEmailSession(session: {
   walletAddress: string;
   email: string;
   token: string;
+  smartAccountAddress?: string;
   expiresAt?: number;
 }) {
   saveStoredSession({
@@ -46,8 +48,16 @@ export function saveEmailSession(session: {
     email: session.email,
     authType: 'email',
     token: session.token,
+    smartAccountAddress: session.smartAccountAddress,
     expiresAt: session.expiresAt ?? Date.now() + SESSION_TTL_MS,
   });
+}
+
+/** Returns the full stored email session (token + smartAccountAddress) for restoration on refresh. */
+export function getEmailSession(walletAddress: string): { token: string; email: string; smartAccountAddress?: string } | null {
+  const s = loadStoredSession(walletAddress);
+  if (!s || s.authType !== 'email') return null;
+  return { token: s.token, email: s.email ?? '', smartAccountAddress: s.smartAccountAddress };
 }
 
 export function clearSession(walletAddress: string) {

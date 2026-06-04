@@ -6,7 +6,7 @@ import { useWallet } from './BscWalletProvider';
 import { getPimlicoSmartAccount } from '@/lib/pimlico';
 import { toViemAccount } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, API_BASE_URL } from '@/lib/constants';
-import { saveEmailSession, getAuthToken } from '@/lib/session';
+import { saveEmailSession, getEmailSession } from '@/lib/session';
 import { useRouter } from 'next/navigation';
 
 function normalizeAddress(addr: string | null | undefined): string | null {
@@ -44,8 +44,16 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
     if (!embeddedWallet) return; // Might be still creating
 
-    // If we already have a valid session for this wallet, don't login again!
-    if (hasLoggedIn || getAuthToken(embeddedWallet.address)) return;
+    // If already have a valid cached session, restore it immediately without re-running Pimlico
+    const cachedSession = getEmailSession(embeddedWallet.address);
+    if (cachedSession) {
+      if (!connected) {
+        const restoreAddr = cachedSession.smartAccountAddress ?? embeddedWallet.address;
+        setEmbeddedSession(restoreAddr, cachedSession.email, cachedSession.token);
+      }
+      if (!hasLoggedIn) setHasLoggedIn(true);
+      return;
+    }
 
     // Capture in a non-undefined local for the closure
     const wallet = embeddedWallet;
@@ -105,23 +113,25 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
         
         // Save the session using the centralized session logic
         if (data.token) {
+          // Save session with smartAccountAddress so page refresh can restore it instantly
           saveEmailSession({
             walletAddress: wallet.address,
             email: user?.email?.address || '',
             token: data.token,
+            smartAccountAddress: saAddr,
           });
           saveEmailSession({
             walletAddress: saAddr,
             email: user?.email?.address || '',
             token: data.token,
+            smartAccountAddress: saAddr,
           });
           setHasLoggedIn(true);
 
-          // Inject the SMART ACCOUNT address into BscWalletProvider (not EOA).
-          // The JWT is signed for saAddr, so walletAddress in profile creation must match.
+          // Inject the SMART ACCOUNT address into BscWalletProvider.
           setEmbeddedSession(saAddr, user?.email?.address || '', data.token);
 
-          // Redirect to home — OnboardingGate modal will auto-open if user needs onboarding
+          // Redirect to home
           router.push('/');
         }
 
