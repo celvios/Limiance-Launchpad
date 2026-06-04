@@ -3,7 +3,7 @@ import { toSimpleSmartAccount } from 'permissionless/accounts';
 import { createPimlicoClient } from 'permissionless/clients/pimlico';
 import { createPublicClient, http } from 'viem';
 import { bscTestnet, bsc } from 'viem/chains';
-import { BSC_CHAIN_ID, PIMLICO_BUNDLER_URL, PIMLICO_PAYMASTER_URL } from './constants';
+import { BSC_CHAIN_ID, PIMLICO_BUNDLER_URL, PIMLICO_PAYMASTER_URL, BSC_RPC_URL } from './constants';
 import type { LocalAccount } from 'viem';
 
 export async function getPimlicoSmartAccount(signer: LocalAccount) {
