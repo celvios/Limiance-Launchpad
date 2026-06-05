@@ -358,7 +358,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
           >
             {isGraduated
               ? '✓ Graduated to PancakeSwap'
-              : `${supplyPercent.toFixed(0)}% — ${formatNumber(remaining, 0)} to graduation`}
+              : `${supplyPercent.toFixed(0)}% — ${formatNumber(currentSupply, 0)} / ${formatNumber(graduationThreshold, 0)} sold`}
           </div>
         </div>
 

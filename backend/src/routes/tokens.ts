@@ -127,7 +127,13 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
 }
 
 function getSigmoidPrice(supply: number, pMin: number, pMax: number, k: number, midpoint: number): number {
-  const expVal = Math.exp(-k * (supply - midpoint));
+  if (midpoint <= 0) return pMin;
+  const normalizedSupply = supply / midpoint;
+  // Use a fixed curve parameter for a smooth 0->1.0 transition.
+  // k=10.0 means the price starts very close to pMin, reaches halfway at midpoint,
+  // and smoothly approaches pMax.
+  const curveK = 10.0;
+  const expVal = Math.exp(-curveK * (normalizedSupply - 1.0));
   return pMin + (pMax - pMin) / (1 + expVal);
 }
 
@@ -520,7 +526,7 @@ export async function tokenRoutes(app: FastifyInstance) {
             solAmount: amountUsdtWei,
             paymentAmount: amountUsdtWei,
             paymentAsset: PAYMENT_ASSET,
-            pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e6)) : 0n,
+            pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
             txSignature: `internal-${type}-${Date.now()}`,
             timestamp: new Date(),
             isWhale: amountUsdt >= 1000,

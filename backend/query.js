@@ -1,10 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-async function run() {
-  const trades = await prisma.trade.findMany({
-    where: { tokenMint: '0xd2ac3c8d2eb8b13c38708a830c9d4120a2885ac8' },
-    orderBy: { timestamp: 'desc' },
-  });
-  console.log(trades);
+async function main() {
+  const t = await prisma.token.findMany({ select: { symbol: true, currentSupply: true } });
+  console.log('Tokens:', t);
+  const trades = await prisma.trade.findMany({ select: { tokenMint: true, type: true, amount: true } });
+  console.log('Trades:', trades);
 }
-run().finally(() => prisma.$disconnect());
+main().finally(() => prisma.$disconnect());

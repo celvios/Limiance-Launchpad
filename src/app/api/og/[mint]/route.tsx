@@ -140,7 +140,7 @@ export async function GET(
               />
             </div>
             <div style={{ fontSize: 24, color: '#666666' }}>
-              {supplyPercent}% to graduation ·{' '}
+              {supplyPercent}% sold ·{' '}
               {token.status === 'graduated'
                 ? 'Graduated to PancakeSwap'
                 : `${token.currentSupply.toLocaleString()} / ${token.graduationThreshold.toLocaleString()}`}
