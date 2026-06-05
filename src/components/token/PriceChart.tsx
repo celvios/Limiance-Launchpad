@@ -96,7 +96,8 @@ function drawChart(
   const maxVol = Math.max(...volumes) || 1;
 
   // Candle geometry
-  const candleSpacing = Math.max(2, chartW / data.length);
+  const maxSpacing = 20;
+  const candleSpacing = Math.max(2, Math.min(chartW / data.length, maxSpacing));
   const candleW = Math.max(3, candleSpacing * 0.7);
   const wickW = Math.max(1, candleW * 0.15);
 

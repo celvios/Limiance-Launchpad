@@ -45,10 +45,11 @@ interface TokenSocialCounts {
   commentCount: number;
   holderCount: number;
   watchCount: number;
+  volume24h: number;
 }
 
 function emptyCounts(): TokenSocialCounts {
-  return { commentCount: 0, holderCount: 0, watchCount: 0 };
+  return { commentCount: 0, holderCount: 0, watchCount: 0, volume24h: 0 };
 }
 
 async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string, TokenSocialCounts>> {
@@ -56,7 +57,7 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
   const countMap = new Map(uniqueMints.map((mint) => [mint, emptyCounts()]));
   if (uniqueMints.length === 0) return countMap;
 
-  const [commentCounts, watchCounts, holderRows] = await Promise.all([
+  const [commentCounts, watchCounts, holderRows, volRows] = await Promise.all([
     prisma.comment.groupBy({
       by: ['tokenMint'],
       where: { tokenMint: { in: uniqueMints } },
@@ -70,6 +71,14 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
     prisma.trade.groupBy({
       by: ['tokenMint', 'walletAddress'],
       where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+    }),
+    prisma.trade.groupBy({
+      by: ['tokenMint'],
+      where: { 
+        tokenMint: { in: uniqueMints },
+        timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      },
+      _sum: { solAmount: true },
     }),
   ]);
 
@@ -92,7 +101,25 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
     countMap.set(row.tokenMint, { ...current, holderCount: current.holderCount + 1 });
   }
 
+  for (const row of volRows) {
+    const current = countMap.get(row.tokenMint) ?? emptyCounts();
+    countMap.set(row.tokenMint, { 
+      ...current, 
+      volume24h: row._sum.solAmount ? Number(row._sum.solAmount) / 1e6 : 0 
+    });
+  }
+
   return countMap;
+}
+
+function getSigmoidPrice(supply: number, pMin: number, pMax: number, k: number, midpoint: number): number {
+  const expVal = Math.exp(-k * (supply - midpoint));
+  return pMin + (pMax - pMin) / (1 + expVal);
+}
+
+function getSigmoidIntegral(supply: number, pMin: number, pMax: number, k: number, midpoint: number): number {
+  const f = (x: number) => pMin * x + ((pMax - pMin) / k) * Math.log(1 + Math.exp(k * (x - midpoint)));
+  return f(supply) - f(0);
 }
 
 function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
@@ -101,7 +128,12 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
   const cap = Number(token.supplyCap.toString());
   const pMax = Number(token.curveParamA.toString()) / 1e18;
   const pMin = Number(token.curveParamB.toString()) / 1e18;
-  const marketCap = cap > 0 ? pMax * supply : 0;
+  const k = Number(token.curveParamC) / 1e6;
+  const midpoint = Number(token.graduationThreshold);
+
+  const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, midpoint);
+  const totalRaised = getSigmoidIntegral(supply, pMin, pMax, k, midpoint);
+  const marketCap = cap > 0 ? currentPrice * cap : 0;
 
   return {
     tokenAddress,
@@ -118,25 +150,25 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
       type: 'sigmoid',
       pMin,
       pMax,
-      k: Number(token.curveParamC) / 1e6,
-      midpoint: Number(token.graduationThreshold),
+      k,
+      midpoint,
     },
     currentSupply: supply,
     supplyCap: cap,
-    graduationThreshold: Number(token.graduationThreshold),
+    graduationThreshold: midpoint,
     status: token.status,
-    price: pMax,
+    price: currentPrice,
     priceChange24h: 0,
     marketCap,
     commentCount: counts.commentCount,
     watchCount: counts.watchCount,
     sparklineData: [],
-    volume24h: 0,
+    volume24h: counts.volume24h,
     holderCount: counts.holderCount,
     totalSupply: cap,
     basePrice: pMin,
     platformFee: 3,
-    totalRaised: 0,
+    totalRaised,
     dexPoolAddress: token.dexPoolAddress ?? null,
   };
 }
