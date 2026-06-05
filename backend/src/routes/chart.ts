@@ -92,7 +92,7 @@ export async function chartRoutes(app: FastifyInstance) {
       b.volume += t.solAmount;
     }
 
-    const formatPrice = (p: bigint) => Number(p) / 1e18;
+    const formatPrice = (p: bigint) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
 
     // Emit OHLC in each bucket
     const data = Array.from(bucketMap.values())

@@ -51,13 +51,21 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     100
   );
   const isNearGrad = supplyPercent >= 75 && !isGraduated;
+  // Show at least a sliver in the bar when any tokens have been sold
+  const supplyWidth = Math.min(currentSupply > 0 ? Math.max(supplyPercent, 0.5) : 0, 100);
   const remaining = graduationThreshold - currentSupply;
+  // Format percentage — show 2 decimal places when < 1% so it never reads '0%'
+  const supplyPctDisplay = supplyPercent < 0.01
+    ? '<0.01'
+    : supplyPercent < 1
+    ? supplyPercent.toFixed(2)
+    : supplyPercent.toFixed(1);
 
   // Animate supply bar on mount
   useEffect(() => {
-    const timer = setTimeout(() => setSupplyWidth(supplyPercent), 100);
+    const timer = setTimeout(() => setSupplyWidth(currentSupply > 0 ? Math.max(supplyPercent, 0.5) : 0), 100);
     return () => clearTimeout(timer);
-  }, [supplyPercent]);
+  }, [supplyPercent, currentSupply]);
 
   const formatPrice = (p: number): string => {
     if (p < 0.001) return p.toFixed(6);
@@ -358,7 +366,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
           >
             {isGraduated
               ? '✓ Graduated to PancakeSwap'
-              : `${supplyPercent.toFixed(0)}% — ${formatNumber(currentSupply, 0)} / ${formatNumber(graduationThreshold, 0)} sold`}
+              : `${supplyPctDisplay}% — ${formatNumber(currentSupply, 0)} / ${formatNumber(graduationThreshold, 0)} sold`}
           </div>
         </div>
 

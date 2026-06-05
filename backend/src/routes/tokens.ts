@@ -126,20 +126,37 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
   return countMap;
 }
 
-function getSigmoidPrice(supply: number, pMin: number, pMax: number, k: number, midpoint: number): number {
-  if (midpoint <= 0) return pMin;
+// The sigmoid curve uses graduationThreshold/2 as the midpoint.
+// This means:
+//   supply=0 → price≈pMin
+//   supply=graduationThreshold/2 → price midway between pMin and pMax
+//   supply=graduationThreshold → price≈pMax
+// curveK=10 gives a nice S-curve shape.
+const CURVE_K = 10.0;
+
+function getSigmoidPrice(supply: number, pMin: number, pMax: number, _k: number, graduationThreshold: number): number {
+  if (graduationThreshold <= 0) return pMin;
+  const midpoint = graduationThreshold / 2;
   const normalizedSupply = supply / midpoint;
-  // Use a fixed curve parameter for a smooth 0->1.0 transition.
-  // k=10.0 means the price starts very close to pMin, reaches halfway at midpoint,
-  // and smoothly approaches pMax.
-  const curveK = 10.0;
-  const expVal = Math.exp(-curveK * (normalizedSupply - 1.0));
+  const expVal = Math.exp(-CURVE_K * (normalizedSupply - 1.0));
   return pMin + (pMax - pMin) / (1 + expVal);
 }
 
-function getSigmoidIntegral(supply: number, pMin: number, pMax: number, k: number, midpoint: number): number {
-  const f = (x: number) => pMin * x + ((pMax - pMin) / k) * Math.log(1 + Math.exp(k * (x - midpoint)));
-  return f(supply) - f(0);
+function getSigmoidIntegral(supply: number, pMin: number, pMax: number, _k: number, graduationThreshold: number): number {
+  if (graduationThreshold <= 0) return 0;
+  const midpoint = graduationThreshold / 2;
+  // Numerical integration via trapezoid rule (100 steps) — avoids overflow
+  const steps = 100;
+  let total = 0;
+  const step = supply / steps;
+  for (let i = 0; i < steps; i++) {
+    const x0 = i * step;
+    const x1 = (i + 1) * step;
+    const p0 = getSigmoidPrice(x0, pMin, pMax, 0, graduationThreshold);
+    const p1 = getSigmoidPrice(x1, pMin, pMax, 0, graduationThreshold);
+    total += (p0 + p1) * step / 2;
+  }
+  return total;
 }
 
 function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
@@ -148,12 +165,15 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
   const cap = Number(token.supplyCap.toString());
   const pMax = Number(token.curveParamA.toString()) / 1e18;
   const pMin = Number(token.curveParamB.toString()) / 1e18;
-  const k = Number(token.curveParamC) / 1e6;
-  const midpoint = Number(token.graduationThreshold);
+  const k = Number(token.curveParamC) / 1e6; // k stored for reference; curve now uses graduationThreshold/2 as midpoint
+  const graduationThresholdNum = Number(token.graduationThreshold);
 
-  const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, midpoint);
+  const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, graduationThresholdNum);
   const totalRaised = counts.totalRaised;
+  // Market cap = current price × total supply cap (fully diluted)
   const marketCap = cap > 0 ? currentPrice * cap : 0;
+  // Circulating market cap = current price × tokens already sold
+  const circulatingMarketCap = currentPrice * supply;
 
   return {
     tokenAddress,
@@ -175,11 +195,13 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
     },
     currentSupply: supply,
     supplyCap: cap,
-    graduationThreshold: midpoint,
+    totalSupply: cap,
+    graduationThreshold: graduationThresholdNum,
     status: token.status,
     price: currentPrice,
     priceChange24h: 0,
     marketCap,
+    circulatingMarketCap,
     commentCount: counts.commentCount,
     watchCount: counts.watchCount,
     sparklineData: [],
@@ -606,5 +628,142 @@ export async function tokenRoutes(app: FastifyInstance) {
     });
 
     return reply.send({ success: true, id: updated.id, status: updated.status, currentSupply: updated.currentSupply.toString() });
+  });
+
+  // ── GET /api/admin/diagnose ───────────────────────────────────────────────────
+  // Returns full DB state for debugging. Protected by admin secret.
+  app.get('/api/admin/diagnose', async (req, reply) => {
+    const secret = (req.headers['x-admin-secret'] as string) ?? '';
+    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const tokens = await prisma.token.findMany({
+      select: {
+        mint: true, symbol: true, name: true,
+        currentSupply: true, supplyCap: true, graduationThreshold: true,
+        curveParamA: true, curveParamB: true, curveParamC: true,
+        status: true, createdAt: true,
+      }
+    });
+
+    const tokenBals = await prisma.userTokenBalance.findMany();
+    const trades = await prisma.trade.findMany({
+      orderBy: { timestamp: 'asc' },
+      select: {
+        id: true, tokenMint: true, type: true, walletAddress: true,
+        amount: true, solAmount: true, pricePerToken: true, timestamp: true,
+      }
+    });
+    const usdtBals = await prisma.userBalance.findMany();
+
+    return reply.send({
+      tokens: tokens.map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        mint: t.mint,
+        currentSupply: t.currentSupply.toString(),
+        supplyCap: t.supplyCap.toString(),
+        graduationThreshold: t.graduationThreshold.toString(),
+        pMax_raw: t.curveParamA.toString(),
+        pMin_raw: t.curveParamB.toString(),
+        k_raw: t.curveParamC.toString(),
+        pMax: Number(t.curveParamA) / 1e18,
+        pMin: Number(t.curveParamB) / 1e18,
+        k: Number(t.curveParamC) / 1e6,
+        status: t.status,
+        marketCapAtCurrentSupply: (Number(t.curveParamB) / 1e18) * Number(t.supplyCap),
+      })),
+      userTokenBalances: tokenBals.map(b => ({
+        wallet: b.walletAddress,
+        tokenAddress: b.tokenAddress,
+        amountRaw: b.amount.toString(),
+        amountHuman: Number(b.amount) / 1e6,
+      })),
+      trades: trades.map(t => ({
+        id: t.id,
+        tokenMint: t.tokenMint,
+        type: t.type,
+        wallet: t.walletAddress,
+        tokenAmount: Number(t.amount) / 1e6,
+        usdtAmount: Number(t.solAmount) / 1e6,
+        pricePerTokenRaw: t.pricePerToken.toString(),
+        pricePerTokenHuman: Number(t.pricePerToken) < 1e10 ? Number(t.pricePerToken) / 1e6 : Number(t.pricePerToken) / 1e18,
+        timestamp: t.timestamp.toISOString(),
+      })),
+      usdtBalances: usdtBals.map(b => ({
+        wallet: b.walletAddress,
+        availableRaw: b.available.toString(),
+        availableHuman: Number(b.available) / 1e6,
+      })),
+    });
+  });
+
+  // ── POST /api/admin/fix-supply ────────────────────────────────────────────────
+  // Recomputes token.currentSupply from the sum of all buy/sell trades.
+  // Also fixes UserTokenBalance by recomputing from trades per wallet.
+  app.post('/api/admin/fix-supply', async (req, reply) => {
+    const secret = (req.headers['x-admin-secret'] as string) ?? '';
+    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const tokens = await prisma.token.findMany({ select: { id: true, mint: true, symbol: true } });
+    const results = [];
+
+    for (const token of tokens) {
+      // Sum all buy trades - sum all sell trades to get net supply
+      const buyTrades = await prisma.trade.findMany({
+        where: { tokenMint: token.mint, type: 'buy' },
+        select: { amount: true, walletAddress: true },
+      });
+      const sellTrades = await prisma.trade.findMany({
+        where: { tokenMint: token.mint, type: 'sell' },
+        select: { amount: true, walletAddress: true },
+      });
+
+      // Total supply = sum of buys - sum of sells (in amountTokensWei, i.e. tokens × 1e6)
+      const totalBoughtWei = buyTrades.reduce((s, t) => s + t.amount, 0n);
+      const totalSoldWei = sellTrades.reduce((s, t) => s + t.amount, 0n);
+      const netSupplyWei = totalBoughtWei - totalSoldWei;
+      // currentSupply is stored in raw token units (not × 1e6)
+      const newCurrentSupply = netSupplyWei / 1_000_000n;
+
+      await prisma.token.update({
+        where: { id: token.id },
+        data: { currentSupply: newCurrentSupply > 0n ? newCurrentSupply : 0n },
+      });
+
+      // Fix per-wallet token balances
+      const wallets = new Set([
+        ...buyTrades.map(t => t.walletAddress),
+        ...sellTrades.map(t => t.walletAddress),
+      ]);
+
+      const walletResults = [];
+      for (const wallet of wallets) {
+        const bought = buyTrades.filter(t => t.walletAddress === wallet).reduce((s, t) => s + t.amount, 0n);
+        const sold = sellTrades.filter(t => t.walletAddress === wallet).reduce((s, t) => s + t.amount, 0n);
+        const netBalance = bought - sold;
+        const finalBalance = netBalance > 0n ? netBalance : 0n;
+
+        await prisma.userTokenBalance.upsert({
+          where: { walletAddress_tokenAddress: { walletAddress: wallet, tokenAddress: token.mint } },
+          create: { walletAddress: wallet, tokenAddress: token.mint, amount: finalBalance },
+          update: { amount: finalBalance },
+        });
+
+        walletResults.push({ wallet, boughtRaw: bought.toString(), soldRaw: sold.toString(), netBalance: (Number(finalBalance) / 1e6).toFixed(2) });
+      }
+
+      results.push({
+        symbol: token.symbol,
+        mint: token.mint,
+        newCurrentSupply: newCurrentSupply.toString(),
+        wallets: walletResults,
+      });
+    }
+
+    return reply.send({ success: true, results });
   });
 }
