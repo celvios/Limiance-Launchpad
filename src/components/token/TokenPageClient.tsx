@@ -164,7 +164,7 @@ export function TokenPageClient() {
             >
               {[
                 { label: 'Curve Type', value: token.curveType.toUpperCase() },
-                { label: 'Total Supply', value: `${(token.totalSupply / 1000).toFixed(0)}K` },
+                { label: 'Total Supply', value: token.totalSupply >= 1e9 ? `${(token.totalSupply / 1e9).toFixed(0)}B` : token.totalSupply >= 1e6 ? `${(token.totalSupply / 1e6).toFixed(0)}M` : `${(token.totalSupply / 1000).toFixed(0)}K` },
                 { label: 'Holders', value: token.holderCount.toLocaleString() },
                 { label: '24h Volume', value: `${token.volume24h.toLocaleString()} USDT` },
                 { label: 'Total Raised', value: `${token.totalRaised.toFixed(1)} USDT` },

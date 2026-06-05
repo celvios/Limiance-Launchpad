@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { usePostComment } from '@/hooks/useComments';
+import { usePostComment, useComments } from '@/hooks/useComments';
+import { CommentItem } from '@/components/social/CommentItem';
 import type { TokenCardData } from '@/lib/types';
 
 export function CommentModal() {
@@ -18,6 +19,7 @@ export function CommentModal() {
   const token = modalData as TokenCardData | null;
   const isOpen = activeModal === 'comment-modal' && !!token;
   const postMutation = usePostComment(token?.mint ?? '');
+  const { data: commentsData } = useComments(token?.mint ?? '', 'top');
 
   if (!isOpen || !token) return null;
 
@@ -143,6 +145,24 @@ export function CommentModal() {
             </div>
           </div>
         </div>
+
+        {/* Existing Comments */}
+        {commentsData && commentsData.comments.length > 0 && (
+          <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-4)' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: 'var(--space-3)' }}>Replies</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {commentsData.comments.map((comment) => (
+                <CommentItem
+                  key={comment.id}
+                  comment={comment}
+                  canReply={false}
+                  onReply={() => {}}
+                  onReact={() => {}}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -248,7 +248,7 @@ function drawChart(
 export function PriceChart({ mint, currentPrice }: PriceChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activeRange, setActiveRange] = useState<ChartTimeRange>('ALL');
+  const [activeRange, setActiveRange] = useState<ChartTimeRange>('1H');
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const animFrameRef = useRef<number>(0);
 

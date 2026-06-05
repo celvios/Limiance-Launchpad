@@ -49,6 +49,7 @@ export function usePostComment(mint: string) {
         },
       );
       queryClient.invalidateQueries({ queryKey: ['comments', mint, 'top'] });
+      queryClient.invalidateQueries({ queryKey: ['tokens'] });
     },
   });
 }

@@ -46,10 +46,11 @@ interface TokenSocialCounts {
   holderCount: number;
   watchCount: number;
   volume24h: number;
+  totalRaised: number;
 }
 
 function emptyCounts(): TokenSocialCounts {
-  return { commentCount: 0, holderCount: 0, watchCount: 0, volume24h: 0 };
+  return { commentCount: 0, holderCount: 0, watchCount: 0, volume24h: 0, totalRaised: 0 };
 }
 
 async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string, TokenSocialCounts>> {
@@ -57,7 +58,7 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
   const countMap = new Map(uniqueMints.map((mint) => [mint, emptyCounts()]));
   if (uniqueMints.length === 0) return countMap;
 
-  const [commentCounts, watchCounts, holderRows, volRows] = await Promise.all([
+  const [commentCounts, watchCounts, holderRows, volRows, raisedRows] = await Promise.all([
     prisma.comment.groupBy({
       by: ['tokenMint'],
       where: { tokenMint: { in: uniqueMints } },
@@ -78,6 +79,11 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
         tokenMint: { in: uniqueMints },
         timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
       },
+      _sum: { solAmount: true },
+    }),
+    prisma.trade.groupBy({
+      by: ['tokenMint'],
+      where: { tokenMint: { in: uniqueMints }, type: 'buy' },
       _sum: { solAmount: true },
     }),
   ]);
@@ -109,6 +115,14 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
     });
   }
 
+  for (const row of raisedRows) {
+    const current = countMap.get(row.tokenMint) ?? emptyCounts();
+    countMap.set(row.tokenMint, { 
+      ...current, 
+      totalRaised: row._sum.solAmount ? Number(row._sum.solAmount) / 1e6 : 0 
+    });
+  }
+
   return countMap;
 }
 
@@ -132,7 +146,7 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
   const midpoint = Number(token.graduationThreshold);
 
   const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, midpoint);
-  const totalRaised = getSigmoidIntegral(supply, pMin, pMax, k, midpoint);
+  const totalRaised = counts.totalRaised;
   const marketCap = cap > 0 ? currentPrice * cap : 0;
 
   return {
