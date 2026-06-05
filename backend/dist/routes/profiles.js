@@ -107,7 +107,7 @@ async function profileRoutes(fastify) {
     });
     // ── Create profile (onboarding) ───────────────────────────────────────────
     fastify.post('/api/profiles', {
-        config: { rateLimit: { max: 3, timeWindow: '1 minute' } },
+        config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     }, async (req, reply) => {
         const parsed = CreateProfileBody.safeParse(req.body);
         if (!parsed.success) {
@@ -115,10 +115,12 @@ async function profileRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { walletAddress, username, profilePicUri, coverUri } = parsed.data;
+        // Always compare lowercased addresses — frontend may send mixed-case
+        const walletAddress = parsed.data.walletAddress.toLowerCase();
+        const { username, profilePicUri, coverUri } = parsed.data;
         // JWT authentication
         const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== walletAddress) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         // Username format

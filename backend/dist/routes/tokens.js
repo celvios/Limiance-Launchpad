@@ -38,14 +38,14 @@ function toWei(value) {
     return BigInt(Math.round(value * 1e18));
 }
 function emptyCounts() {
-    return { commentCount: 0, holderCount: 0, watchCount: 0 };
+    return { commentCount: 0, holderCount: 0, watchCount: 0, volume24h: 0, totalRaised: 0 };
 }
 async function fetchTokenSocialCounts(tokenMints) {
     const uniqueMints = [...new Set(tokenMints)].filter(Boolean);
     const countMap = new Map(uniqueMints.map((mint) => [mint, emptyCounts()]));
     if (uniqueMints.length === 0)
         return countMap;
-    const [commentCounts, watchCounts, holderRows] = await Promise.all([
+    const [commentCounts, watchCounts, holderRows, volRows, raisedRows] = await Promise.all([
         prisma_1.prisma.comment.groupBy({
             by: ['tokenMint'],
             where: { tokenMint: { in: uniqueMints } },
@@ -59,6 +59,19 @@ async function fetchTokenSocialCounts(tokenMints) {
         prisma_1.prisma.trade.groupBy({
             by: ['tokenMint', 'walletAddress'],
             where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+        }),
+        prisma_1.prisma.trade.groupBy({
+            by: ['tokenMint'],
+            where: {
+                tokenMint: { in: uniqueMints },
+                timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            },
+            _sum: { solAmount: true },
+        }),
+        prisma_1.prisma.trade.groupBy({
+            by: ['tokenMint'],
+            where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+            _sum: { solAmount: true },
         }),
     ]);
     for (const row of commentCounts) {
@@ -77,7 +90,53 @@ async function fetchTokenSocialCounts(tokenMints) {
         const current = countMap.get(row.tokenMint) ?? emptyCounts();
         countMap.set(row.tokenMint, { ...current, holderCount: current.holderCount + 1 });
     }
+    for (const row of volRows) {
+        const current = countMap.get(row.tokenMint) ?? emptyCounts();
+        countMap.set(row.tokenMint, {
+            ...current,
+            volume24h: row._sum.solAmount ? Number(row._sum.solAmount) / 1e6 : 0
+        });
+    }
+    for (const row of raisedRows) {
+        const current = countMap.get(row.tokenMint) ?? emptyCounts();
+        countMap.set(row.tokenMint, {
+            ...current,
+            totalRaised: row._sum.solAmount ? Number(row._sum.solAmount) / 1e6 : 0
+        });
+    }
     return countMap;
+}
+// The sigmoid curve uses graduationThreshold/2 as the midpoint.
+// This means:
+//   supply=0 → price≈pMin
+//   supply=graduationThreshold/2 → price midway between pMin and pMax
+//   supply=graduationThreshold → price≈pMax
+// curveK=10 gives a nice S-curve shape.
+const CURVE_K = 10.0;
+function getSigmoidPrice(supply, pMin, pMax, _k, graduationThreshold) {
+    if (graduationThreshold <= 0)
+        return pMin;
+    const midpoint = graduationThreshold / 2;
+    const normalizedSupply = supply / midpoint;
+    const expVal = Math.exp(-CURVE_K * (normalizedSupply - 1.0));
+    return pMin + (pMax - pMin) / (1 + expVal);
+}
+function getSigmoidIntegral(supply, pMin, pMax, _k, graduationThreshold) {
+    if (graduationThreshold <= 0)
+        return 0;
+    const midpoint = graduationThreshold / 2;
+    // Numerical integration via trapezoid rule (100 steps) — avoids overflow
+    const steps = 100;
+    let total = 0;
+    const step = supply / steps;
+    for (let i = 0; i < steps; i++) {
+        const x0 = i * step;
+        const x1 = (i + 1) * step;
+        const p0 = getSigmoidPrice(x0, pMin, pMax, 0, graduationThreshold);
+        const p1 = getSigmoidPrice(x1, pMin, pMax, 0, graduationThreshold);
+        total += (p0 + p1) * step / 2;
+    }
+    return total;
 }
 function serializeToken(token, creatorHandle, counts = emptyCounts()) {
     const tokenAddress = token.tokenAddress ?? token.mint;
@@ -85,7 +144,14 @@ function serializeToken(token, creatorHandle, counts = emptyCounts()) {
     const cap = Number(token.supplyCap.toString());
     const pMax = Number(token.curveParamA.toString()) / 1e18;
     const pMin = Number(token.curveParamB.toString()) / 1e18;
-    const marketCap = cap > 0 ? pMax * supply : 0;
+    const k = Number(token.curveParamC) / 1e6; // k stored for reference; curve now uses graduationThreshold/2 as midpoint
+    const graduationThresholdNum = Number(token.graduationThreshold);
+    const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, graduationThresholdNum);
+    const totalRaised = counts.totalRaised;
+    // Market cap = current price × total supply cap (fully diluted)
+    const marketCap = cap > 0 ? currentPrice * cap : 0;
+    // Circulating market cap = current price × tokens already sold
+    const circulatingMarketCap = currentPrice * supply;
     return {
         tokenAddress,
         mint: tokenAddress,
@@ -101,25 +167,26 @@ function serializeToken(token, creatorHandle, counts = emptyCounts()) {
             type: 'sigmoid',
             pMin,
             pMax,
-            k: Number(token.curveParamC) / 1e6,
-            midpoint: Number(token.graduationThreshold),
+            k,
+            midpoint: graduationThresholdNum / 2,
         },
         currentSupply: supply,
         supplyCap: cap,
-        graduationThreshold: Number(token.graduationThreshold),
+        graduationThreshold: graduationThresholdNum,
         status: token.status,
-        price: pMax,
+        price: currentPrice,
         priceChange24h: 0,
         marketCap,
+        circulatingMarketCap,
         commentCount: counts.commentCount,
         watchCount: counts.watchCount,
         sparklineData: [],
-        volume24h: 0,
+        volume24h: counts.volume24h,
         holderCount: counts.holderCount,
         totalSupply: cap,
         basePrice: pMin,
         platformFee: 3,
-        totalRaised: 0,
+        totalRaised,
         dexPoolAddress: token.dexPoolAddress ?? null,
     };
 }
@@ -173,7 +240,7 @@ async function tokenRoutes(app) {
             const balance = await prisma_1.prisma.userBalance.findFirst({
                 where: {
                     walletAddress: creator,
-                    asset: '0x0000000000000000000000000000000000000000',
+                    asset: bsc_1.PAYMENT_ASSET,
                 },
             });
             if (!balance || balance.available < totalCostWei) {
@@ -191,7 +258,7 @@ async function tokenRoutes(app) {
                     walletAddress_chainId_asset: {
                         walletAddress: creator,
                         chainId: 97, // Assuming BSC Testnet for simulation
-                        asset: '0x0000000000000000000000000000000000000000',
+                        asset: bsc_1.PAYMENT_ASSET,
                     },
                 },
                 update: {
@@ -201,7 +268,7 @@ async function tokenRoutes(app) {
                 create: {
                     walletAddress: creator,
                     chainId: 97,
-                    asset: '0x0000000000000000000000000000000000000000',
+                    asset: bsc_1.PAYMENT_ASSET,
                     available: 10000000000n - totalCostWei, // Give 10k mock USDT initially if no balance
                     consumed: totalCostWei,
                 },
@@ -216,7 +283,7 @@ async function tokenRoutes(app) {
                         amount: BigInt(body.initialBuyAmount),
                         solAmount: initialSolAmountWei,
                         paymentAmount: initialSolAmountWei,
-                        paymentAsset: '0x0000000000000000000000000000000000000000',
+                        paymentAsset: bsc_1.PAYMENT_ASSET,
                         pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
                         txSignature: `initial-buy-${token.id}`,
                         timestamp: new Date(),
@@ -305,19 +372,16 @@ async function tokenRoutes(app) {
         return reply.send({ ...serializeToken(token, creatorHandle, countMap.get(token.mint)), creatorPicUri: creatorPic });
     });
     app.post('/api/tokens/:address/trade', async (req, reply) => {
-        // Authenticated Balance Trade
+        // Authenticated Balance Trade — fully backend-tracked (no on-chain tx per trade)
         const authHeader = req.headers.authorization;
-        if (!authHeader)
+        if (!authHeader?.startsWith('Bearer ')) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
-        // In a real app we parse JWT, here we just assume the wallet is sent in body for prototype,
-        // or we can use the same authenticateSession logic if it's imported.
-        // Let's import authenticateSession. Wait, I can't import it here directly if I don't know the exact path.
-        // Actually, I'll just check `req.headers.authorization` using a mock or basic parse.
+        }
         const TradeBody = zod_1.z.object({
-            wallet: zod_1.z.string(), // Temporarily accept wallet in body for ease of simulation
+            wallet: zod_1.z.string(),
             type: zod_1.z.enum(['buy', 'sell']),
-            amountUsdt: zod_1.z.number(), // Amount of USDT to spend (buy) or receive (sell)
-            amountTokens: zod_1.z.number(), // Amount of tokens to receive (buy) or spend (sell)
+            amountUsdt: zod_1.z.number().positive(), // USDT to spend (buy) or USDT to receive (sell)
+            amountTokens: zod_1.z.number().positive(), // Tokens to receive (buy) or tokens to sell (sell)
         });
         const parsed = TradeBody.safeParse(req.body);
         if (!parsed.success) {
@@ -327,87 +391,304 @@ async function tokenRoutes(app) {
         const userWallet = (0, bsc_1.normalizeAddress)(wallet);
         const { address: tokenAddressParam } = req.params;
         const tokenAddress = tokenAddressParam.toLowerCase();
-        const amountUsdtWei = BigInt(Math.floor(amountUsdt * 1e6)); // 6 decimals for USDT in our system
-        const amountTokensWei = BigInt(Math.floor(amountTokens * 1e18)); // 18 decimals for token
-        const result = await prisma_1.prisma.$transaction(async (tx) => {
-            const token = await tx.token.findFirst({
-                where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
-            });
-            if (!token)
-                throw new Error('Token not found');
-            if (token.status !== 'active')
-                throw new Error('Token is not active for internal trading');
-            // Check user balance
-            const balance = await tx.userBalance.findFirst({
-                where: {
-                    walletAddress: userWallet,
-                    asset: '0x0000000000000000000000000000000000000000', // Mock USDT
-                },
-            });
-            if (type === 'buy') {
-                if (!balance || balance.available < amountUsdtWei) {
-                    throw new Error('Insufficient USDT balance');
+        // USDT: 6 decimals for DB storage
+        // Tokens: TWO representations needed:
+        //   amountTokensRaw  = raw integer units (matches Token.currentSupply / graduationThreshold scale)
+        //   amountTokensWei  = 6-decimal units for UserTokenBalance (fits in Postgres BIGINT)
+        const amountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
+        const amountTokensRaw = BigInt(Math.round(amountTokens)); // for currentSupply
+        const amountTokensWei = BigInt(Math.round(amountTokens * 1e6)); // for UserTokenBalance
+        try {
+            const result = await prisma_1.prisma.$transaction(async (tx) => {
+                const token = await tx.token.findFirst({
+                    where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+                });
+                if (!token)
+                    throw new Error('Token not found');
+                // Allow trading on 'active' and 'graduating' tokens (graduation is async)
+                if (token.status !== 'active' && token.status !== 'graduating') {
+                    throw new Error(`Token is not available for trading (status: ${token.status})`);
                 }
-                // Deduct USDT balance
-                await tx.userBalance.update({
-                    where: { id: balance.id },
-                    data: {
-                        available: { decrement: amountUsdtWei },
-                        consumed: { increment: amountUsdtWei },
-                    },
+                const usdtBalance = await tx.userBalance.findFirst({
+                    where: { walletAddress: userWallet, asset: bsc_1.PAYMENT_ASSET },
                 });
-                // Update token supply
-                const newSupply = token.currentSupply + amountTokensWei;
-                const willGraduate = newSupply >= token.graduationThreshold;
-                await tx.token.update({
-                    where: { id: token.id },
-                    data: {
-                        currentSupply: newSupply,
-                        status: willGraduate ? 'graduating' : 'active'
-                    },
-                });
-                // Note: Realistically we would also update a UserTokenBalance table to track their token holdings.
-                // For prototype, we just record the Trade.
-            }
-            else {
-                // Sell
-                // In a real app, check if they have enough tokens in UserTokenBalance
-                // For now, we just credit their USDT
-                if (!balance) {
-                    throw new Error('No USDT balance record found');
+                if (type === 'buy') {
+                    // ── BUY ──────────────────────────────────────────────────────────────
+                    if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
+                        throw new Error('Insufficient USDT balance — please deposit more');
+                    }
+                    // Deduct USDT
+                    await tx.userBalance.update({
+                        where: { id: usdtBalance.id },
+                        data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
+                    });
+                    // Credit token balance (6-decimal scaled for UserTokenBalance)
+                    const existingTokenBal = await tx.userTokenBalance.findUnique({
+                        where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+                    });
+                    if (existingTokenBal) {
+                        await tx.userTokenBalance.update({
+                            where: { id: existingTokenBal.id },
+                            data: { amount: { increment: amountTokensWei } },
+                        });
+                    }
+                    else {
+                        await tx.userTokenBalance.create({
+                            data: { walletAddress: userWallet, tokenAddress: token.mint, amount: amountTokensWei },
+                        });
+                    }
+                    // Advance the bonding curve supply (raw integer units — matches graduationThreshold scale)
+                    const newSupply = token.currentSupply + amountTokensRaw;
+                    const willGraduate = newSupply >= token.graduationThreshold;
+                    await tx.token.update({
+                        where: { id: token.id },
+                        data: {
+                            currentSupply: newSupply,
+                            status: willGraduate ? 'graduating' : 'active',
+                        },
+                    });
                 }
-                await tx.userBalance.update({
-                    where: { id: balance.id },
+                else {
+                    // ── SELL ─────────────────────────────────────────────────────────────
+                    const tokenBalance = await tx.userTokenBalance.findUnique({
+                        where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+                    });
+                    if (!tokenBalance || tokenBalance.amount < amountTokensWei) {
+                        throw new Error('Insufficient token balance to sell');
+                    }
+                    // Deduct token balance
+                    await tx.userTokenBalance.update({
+                        where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+                        data: { amount: { decrement: amountTokensWei } },
+                    });
+                    // Credit USDT
+                    if (usdtBalance) {
+                        await tx.userBalance.update({
+                            where: { id: usdtBalance.id },
+                            data: { available: { increment: amountUsdtWei } },
+                        });
+                    }
+                    else {
+                        await tx.userBalance.create({
+                            data: {
+                                walletAddress: userWallet,
+                                chainId: bsc_1.BSC_CHAIN_ID,
+                                asset: bsc_1.PAYMENT_ASSET,
+                                available: amountUsdtWei,
+                            },
+                        });
+                    }
+                    // Roll back the bonding curve supply (raw integer units)
+                    const newSupply = token.currentSupply - amountTokensRaw;
+                    await tx.token.update({
+                        where: { id: token.id },
+                        data: { currentSupply: newSupply > 0n ? newSupply : 0n },
+                    });
+                }
+                // Record trade activity
+                const trade = await tx.trade.create({
                     data: {
-                        available: { increment: amountUsdtWei },
+                        tokenMint: token.mint,
+                        tokenAddress: token.tokenAddress,
+                        walletAddress: userWallet,
+                        type,
+                        amount: amountTokensWei,
+                        solAmount: amountUsdtWei,
+                        paymentAmount: amountUsdtWei,
+                        paymentAsset: bsc_1.PAYMENT_ASSET,
+                        pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
+                        txSignature: `internal-${type}-${Date.now()}`,
+                        timestamp: new Date(),
+                        isWhale: amountUsdt >= 1000,
                     },
                 });
-                await tx.token.update({
-                    where: { id: token.id },
-                    data: { currentSupply: { decrement: amountTokensWei } },
-                });
-            }
-            // Record trade
-            const trade = await tx.trade.create({
-                data: {
-                    tokenMint: token.mint,
-                    tokenAddress: token.tokenAddress,
-                    walletAddress: userWallet,
-                    type,
-                    amount: amountTokensWei,
-                    solAmount: amountUsdtWei,
-                    paymentAmount: amountUsdtWei,
-                    paymentAsset: '0x0000000000000000000000000000000000000000',
-                    pricePerToken: amountTokens > 0 ? BigInt(Math.floor((amountUsdt / amountTokens) * 1e18)) : 0n,
-                    txSignature: `internal-${type}-${Date.now()}`,
-                    timestamp: new Date(),
-                    isWhale: false,
-                },
+                const finalSupply = type === 'buy'
+                    ? token.currentSupply + amountTokensRaw
+                    : token.currentSupply - amountTokensRaw;
+                return {
+                    trade: {
+                        ...trade,
+                        amount: trade.amount.toString(),
+                        solAmount: trade.solAmount.toString(),
+                        paymentAmount: trade.paymentAmount?.toString() ?? null,
+                        pricePerToken: trade.pricePerToken.toString(),
+                    },
+                    newSupply: finalSupply.toString(),
+                    graduated: type === 'buy' && finalSupply >= token.graduationThreshold
+                };
             });
-            const newSupply = token.currentSupply + (type === 'buy' ? amountTokensWei : -amountTokensWei);
-            return { trade, newSupply, graduated: type === 'buy' && newSupply >= token.graduationThreshold };
+            return reply.send({ success: true, ...result });
+        }
+        catch (err) {
+            return reply.code(400).send({ error: err.message, code: 'TRADE_ERROR' });
+        }
+    });
+    // ── GET /api/tokens/:address/my-balance ─────────────────────────────────────
+    // Returns the calling wallet's platform token balance for a specific token.
+    app.get('/api/tokens/:address/my-balance', async (req, reply) => {
+        const { wallet } = req.query;
+        if (!wallet)
+            return reply.code(400).send({ error: 'wallet query param required' });
+        const { address: tokenAddressParam } = req.params;
+        const tokenAddress = tokenAddressParam.toLowerCase();
+        const userWallet = (0, bsc_1.normalizeAddress)(wallet);
+        const token = await prisma_1.prisma.token.findFirst({
+            where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+            select: { mint: true },
         });
-        return reply.send({ success: true, ...result });
+        if (!token)
+            return reply.code(404).send({ error: 'Token not found' });
+        const tokenBalance = await prisma_1.prisma.userTokenBalance.findUnique({
+            where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
+        });
+        return reply.send({ amount: tokenBalance?.amount.toString() ?? '0' });
+    });
+    // ── POST /api/admin/tokens/:address/reset-status ─────────────────────────────
+    // Admin-only: resets a stuck token back to 'active' for testing/recovery.
+    // Pass ?resetSupply=true to also zero out currentSupply (fixes corrupted scale data).
+    app.post('/api/admin/tokens/:address/reset-status', async (req, reply) => {
+        const secret = req.headers['x-admin-secret'] ?? '';
+        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+            return reply.code(403).send({ error: 'Forbidden' });
+        }
+        const { address: tokenAddressParam } = req.params;
+        const tokenAddress = tokenAddressParam.toLowerCase();
+        const { resetSupply } = req.query;
+        const token = await prisma_1.prisma.token.findFirst({
+            where: { OR: [{ tokenAddress }, { mint: tokenAddress }] },
+        });
+        if (!token)
+            return reply.code(404).send({ error: 'Token not found' });
+        const updated = await prisma_1.prisma.token.update({
+            where: { id: token.id },
+            data: {
+                status: 'active',
+                ...(resetSupply === 'true' ? { currentSupply: 0n } : {}),
+            },
+        });
+        return reply.send({ success: true, id: updated.id, status: updated.status, currentSupply: updated.currentSupply.toString() });
+    });
+    // ── GET /api/admin/diagnose ───────────────────────────────────────────────────
+    // Returns full DB state for debugging. Protected by admin secret.
+    app.get('/api/admin/diagnose', async (req, reply) => {
+        const secret = req.headers['x-admin-secret'] ?? '';
+        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+            return reply.code(403).send({ error: 'Forbidden' });
+        }
+        const tokens = await prisma_1.prisma.token.findMany({
+            select: {
+                mint: true, symbol: true, name: true,
+                currentSupply: true, supplyCap: true, graduationThreshold: true,
+                curveParamA: true, curveParamB: true, curveParamC: true,
+                status: true, createdAt: true,
+            }
+        });
+        const tokenBals = await prisma_1.prisma.userTokenBalance.findMany();
+        const trades = await prisma_1.prisma.trade.findMany({
+            orderBy: { timestamp: 'asc' },
+            select: {
+                id: true, tokenMint: true, type: true, walletAddress: true,
+                amount: true, solAmount: true, pricePerToken: true, timestamp: true,
+            }
+        });
+        const usdtBals = await prisma_1.prisma.userBalance.findMany();
+        return reply.send({
+            tokens: tokens.map(t => ({
+                symbol: t.symbol,
+                name: t.name,
+                mint: t.mint,
+                currentSupply: t.currentSupply.toString(),
+                supplyCap: t.supplyCap.toString(),
+                graduationThreshold: t.graduationThreshold.toString(),
+                pMax_raw: t.curveParamA.toString(),
+                pMin_raw: t.curveParamB.toString(),
+                k_raw: t.curveParamC.toString(),
+                pMax: Number(t.curveParamA) / 1e18,
+                pMin: Number(t.curveParamB) / 1e18,
+                k: Number(t.curveParamC) / 1e6,
+                status: t.status,
+                marketCapAtCurrentSupply: (Number(t.curveParamB) / 1e18) * Number(t.supplyCap),
+            })),
+            userTokenBalances: tokenBals.map(b => ({
+                wallet: b.walletAddress,
+                tokenAddress: b.tokenAddress,
+                amountRaw: b.amount.toString(),
+                amountHuman: Number(b.amount) / 1e6,
+            })),
+            trades: trades.map(t => ({
+                id: t.id,
+                tokenMint: t.tokenMint,
+                type: t.type,
+                wallet: t.walletAddress,
+                tokenAmount: Number(t.amount) / 1e6,
+                usdtAmount: Number(t.solAmount) / 1e6,
+                pricePerTokenRaw: t.pricePerToken.toString(),
+                pricePerTokenHuman: Number(t.pricePerToken) < 1e10 ? Number(t.pricePerToken) / 1e6 : Number(t.pricePerToken) / 1e18,
+                timestamp: t.timestamp.toISOString(),
+            })),
+            usdtBalances: usdtBals.map(b => ({
+                wallet: b.walletAddress,
+                availableRaw: b.available.toString(),
+                availableHuman: Number(b.available) / 1e6,
+            })),
+        });
+    });
+    // ── POST /api/admin/fix-supply ────────────────────────────────────────────────
+    // Recomputes token.currentSupply from the sum of all buy/sell trades.
+    // Also fixes UserTokenBalance by recomputing from trades per wallet.
+    app.post('/api/admin/fix-supply', async (req, reply) => {
+        const secret = req.headers['x-admin-secret'] ?? '';
+        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+            return reply.code(403).send({ error: 'Forbidden' });
+        }
+        const tokens = await prisma_1.prisma.token.findMany({ select: { id: true, mint: true, symbol: true } });
+        const results = [];
+        for (const token of tokens) {
+            // Sum all buy trades - sum all sell trades to get net supply
+            const buyTrades = await prisma_1.prisma.trade.findMany({
+                where: { tokenMint: token.mint, type: 'buy' },
+                select: { amount: true, walletAddress: true },
+            });
+            const sellTrades = await prisma_1.prisma.trade.findMany({
+                where: { tokenMint: token.mint, type: 'sell' },
+                select: { amount: true, walletAddress: true },
+            });
+            // Total supply = sum of buys - sum of sells (in amountTokensWei, i.e. tokens × 1e6)
+            const totalBoughtWei = buyTrades.reduce((s, t) => s + t.amount, 0n);
+            const totalSoldWei = sellTrades.reduce((s, t) => s + t.amount, 0n);
+            const netSupplyWei = totalBoughtWei - totalSoldWei;
+            // currentSupply is stored in raw token units (not × 1e6)
+            const newCurrentSupply = netSupplyWei / 1000000n;
+            await prisma_1.prisma.token.update({
+                where: { id: token.id },
+                data: { currentSupply: newCurrentSupply > 0n ? newCurrentSupply : 0n },
+            });
+            // Fix per-wallet token balances
+            const wallets = new Set([
+                ...buyTrades.map(t => t.walletAddress),
+                ...sellTrades.map(t => t.walletAddress),
+            ]);
+            const walletResults = [];
+            for (const wallet of wallets) {
+                const bought = buyTrades.filter(t => t.walletAddress === wallet).reduce((s, t) => s + t.amount, 0n);
+                const sold = sellTrades.filter(t => t.walletAddress === wallet).reduce((s, t) => s + t.amount, 0n);
+                const netBalance = bought - sold;
+                const finalBalance = netBalance > 0n ? netBalance : 0n;
+                await prisma_1.prisma.userTokenBalance.upsert({
+                    where: { walletAddress_tokenAddress: { walletAddress: wallet, tokenAddress: token.mint } },
+                    create: { walletAddress: wallet, tokenAddress: token.mint, amount: finalBalance },
+                    update: { amount: finalBalance },
+                });
+                walletResults.push({ wallet, boughtRaw: bought.toString(), soldRaw: sold.toString(), netBalance: (Number(finalBalance) / 1e6).toFixed(2) });
+            }
+            results.push({
+                symbol: token.symbol,
+                mint: token.mint,
+                newCurrentSupply: newCurrentSupply.toString(),
+                wallets: walletResults,
+            });
+        }
+        return reply.send({ success: true, results });
     });
 }
 //# sourceMappingURL=tokens.js.map

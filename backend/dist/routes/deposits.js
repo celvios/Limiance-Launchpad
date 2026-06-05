@@ -122,6 +122,35 @@ async function depositRoutes(app) {
         });
         return reply.send({ balances: balances.map(serializeBalance) });
     });
+    // ── FOR TESTING ONLY: Mock direct credit ────────────────────────────────────
+    app.post('/api/deposits/mock-credit', async (req, reply) => {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet) {
+            return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+        }
+        const walletAddress = (0, bsc_1.normalizeAddress)(session.wallet);
+        const amountStr = '10000000000'; // 10,000.00 USDT (6 decimals)
+        await prisma_1.prisma.userBalance.upsert({
+            where: {
+                walletAddress_chainId_asset: {
+                    walletAddress,
+                    chainId: bsc_1.BSC_CHAIN_ID,
+                    asset: bsc_1.PAYMENT_ASSET,
+                },
+            },
+            update: {
+                available: { increment: amountStr },
+            },
+            create: {
+                userId: session.userId,
+                walletAddress,
+                chainId: bsc_1.BSC_CHAIN_ID,
+                asset: bsc_1.PAYMENT_ASSET,
+                available: amountStr,
+            },
+        });
+        return reply.code(200).send({ success: true, credited: '10000.00' });
+    });
     app.get('/api/deposits/history/:wallet', async (req, reply) => {
         const { wallet } = req.params;
         const walletAddress = (0, bsc_1.normalizeAddress)(wallet);
@@ -276,7 +305,7 @@ async function depositRoutes(app) {
                 },
             });
             // Queue the withdrawal to be processed on-chain by the Hot Wallet Worker
-            await tx.withdrawalRequest.create({
+            const withdrawal = await tx.withdrawalRequest.create({
                 data: {
                     userId: session.userId ?? undefined,
                     userWallet: userWallet,
@@ -286,9 +315,34 @@ async function depositRoutes(app) {
                     status: 'pending'
                 }
             });
-            return balance;
+            return { balance, withdrawal };
         });
-        return reply.send({ success: true, newBalance: result.available?.toString() });
+        return reply.send({ success: true, withdrawalId: result.withdrawal.id, newBalance: result.balance?.available?.toString() });
+    });
+    // ── Withdrawal history ──────────────────────────────────────────────────────
+    app.get('/api/deposits/withdrawals/:wallet', async (req, reply) => {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet) {
+            return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+        }
+        const { wallet } = req.params;
+        const userWallet = (0, bsc_1.normalizeAddress)(wallet);
+        const requests = await prisma_1.prisma.withdrawalRequest.findMany({
+            where: { userWallet },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+        });
+        return reply.send({
+            withdrawals: requests.map((r) => ({
+                id: r.id,
+                amount: r.amount.toString(),
+                destination: r.destination,
+                status: r.status,
+                txHash: r.txHash ?? null,
+                error: r.error ?? null,
+                createdAt: r.createdAt.getTime(),
+            })),
+        });
     });
     app.post('/api/deposits/testnet-credit', async (req, reply) => {
         // ONLY allowed if environment is not strictly production requiring an indexer
@@ -369,6 +423,27 @@ async function depositRoutes(app) {
             return deposit;
         });
         return reply.send({ success: true, depositId: result.id });
+    });
+    // ── FOR DEV ONLY: Reset entire database ──────────────────────────────────────
+    app.get('/api/dev/reset', async (req, reply) => {
+        try {
+            await prisma_1.prisma.$transaction([
+                prisma_1.prisma.trade.deleteMany({}),
+                prisma_1.prisma.comment.deleteMany({}),
+                prisma_1.prisma.deposit.deleteMany({}),
+                prisma_1.prisma.depositAddress.deleteMany({}),
+                prisma_1.prisma.userBalance.deleteMany({}),
+                prisma_1.prisma.token.deleteMany({}),
+                prisma_1.prisma.profile.deleteMany({}),
+                prisma_1.prisma.session.deleteMany({}),
+                prisma_1.prisma.user.deleteMany({}),
+                prisma_1.prisma.indexerState.deleteMany({}),
+            ]);
+            return reply.send({ success: true, message: "Database completely wiped!" });
+        }
+        catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
     });
 }
 //# sourceMappingURL=deposits.js.map

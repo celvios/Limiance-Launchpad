@@ -56,11 +56,11 @@ async function activityRoutes(app) {
             type: t.type,
             walletAddress: t.walletAddress,
             walletHandle: handleMap.get(t.walletAddress) ?? null,
-            amount: Number(t.amount),
+            tokenAmount: Number(t.amount) / 1e6,
             solAmount: Number(t.solAmount) / 1e6,
-            pricePerToken: Number(t.pricePerToken) / 1e18,
+            pricePerToken: Number(t.pricePerToken) < 1e10 ? Number(t.pricePerToken) / 1e6 : Number(t.pricePerToken) / 1e18,
             txSignature: t.txSignature,
-            timestamp: t.timestamp.toISOString(),
+            timestamp: t.timestamp.getTime(),
             isWhale: t.isWhale,
         }));
         return reply.send({

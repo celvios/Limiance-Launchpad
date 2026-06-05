@@ -26,7 +26,7 @@ async function runIndexer() {
             const currentBlock = await provider.getBlockNumber();
             if (currentBlock <= lastProcessedBlock)
                 return; // Wait for new blocks
-            const targetBlock = Math.min(currentBlock, lastProcessedBlock + 500); // Batch size 500
+            const targetBlock = Math.min(currentBlock, lastProcessedBlock + 10); // Batch size 10 (Alchemy Free Tier limit)
             // console.log(`[Indexer] Syncing blocks ${lastProcessedBlock + 1} to ${targetBlock}`);
             const filter = paymentContract.filters.Transfer(null, null);
             const logs = await paymentContract.queryFilter(filter, lastProcessedBlock + 1, targetBlock);
@@ -34,7 +34,8 @@ async function runIndexer() {
                 if (!('args' in log))
                     continue; // Ensure it's an EventLog
                 const toAddress = (0, bsc_1.normalizeAddress)(log.args[1]);
-                const amountWei = BigInt(log.args[2]);
+                // BSC USDT is 18 decimals, but our internal DB uses 6 decimals.
+                const amountWei = BigInt(log.args[2]) / 1000000000000n;
                 // Check if the recipient 'toAddress' is one of our tracked DepositVaults
                 const vault = await prisma_1.prisma.depositAddress.findFirst({
                     where: { vaultAddress: toAddress },

@@ -60,20 +60,30 @@ async function chartRoutes(app) {
         for (const t of trades) {
             const unixSec = Math.floor(t.timestamp.getTime() / 1000);
             const bucketTime = Math.floor(unixSec / bucketSec) * bucketSec;
+            const p = t.pricePerToken;
             if (!bucketMap.has(bucketTime)) {
-                bucketMap.set(bucketTime, { time: bucketTime, prices: [], volume: 0n });
+                bucketMap.set(bucketTime, { time: bucketTime, open: p, high: p, low: p, close: p, volume: 0n });
             }
             const b = bucketMap.get(bucketTime);
-            b.prices.push(t.pricePerToken);
+            b.close = p; // since trades are ordered asc, last one seen is close
+            if (p > b.high)
+                b.high = p;
+            if (p < b.low)
+                b.low = p;
             b.volume += t.solAmount;
         }
-        // Emit last price in each bucket (close price) and total volume
+        const formatPrice = (p) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
+        // Emit OHLC in each bucket
         const data = Array.from(bucketMap.values())
             .sort((a, b) => a.time - b.time)
             .map((b) => ({
             time: b.time,
-            price: b.prices[b.prices.length - 1].toString(),
-            volume: b.volume.toString(),
+            open: formatPrice(b.open),
+            high: formatPrice(b.high),
+            low: formatPrice(b.low),
+            close: formatPrice(b.close),
+            value: formatPrice(b.close),
+            volume: Number(b.volume) / 1e18,
         }));
         return reply.send({ data });
     });
