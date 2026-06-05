@@ -342,7 +342,7 @@ export async function depositRoutes(app: FastifyInstance) {
       });
 
       // Queue the withdrawal to be processed on-chain by the Hot Wallet Worker
-      await tx.withdrawalRequest.create({
+      const withdrawal = await tx.withdrawalRequest.create({
         data: {
           userId: session.userId ?? undefined,
           userWallet: userWallet,
@@ -353,10 +353,36 @@ export async function depositRoutes(app: FastifyInstance) {
         }
       });
       
-      return balance;
+      return { balance, withdrawal };
     });
 
-    return reply.send({ success: true, newBalance: (result as any).available?.toString() });
+    return reply.send({ success: true, withdrawalId: (result as any).withdrawal.id, newBalance: (result as any).balance?.available?.toString() });
+  });
+
+  // ── Withdrawal history ──────────────────────────────────────────────────────
+  app.get('/api/deposits/withdrawals/:wallet', async (req, reply) => {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+    const { wallet } = req.params as { wallet: string };
+    const userWallet = normalizeAddress(wallet);
+    const requests = await prisma.withdrawalRequest.findMany({
+      where: { userWallet },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return reply.send({
+      withdrawals: requests.map((r: any) => ({
+        id: r.id,
+        amount: r.amount.toString(),
+        destination: r.destination,
+        status: r.status,
+        txHash: r.txHash ?? null,
+        error: r.error ?? null,
+        createdAt: r.createdAt.getTime(),
+      })),
+    });
   });
 
   app.post('/api/deposits/testnet-credit', async (req, reply) => {

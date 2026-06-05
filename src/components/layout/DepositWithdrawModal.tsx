@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { useUserBalance } from '@/hooks/useUserBalance';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatTimeAgo } from '@/lib/format';
 import { API_BASE_URL, USDT_ADDRESS } from '@/lib/constants';
 import { useQueryClient } from '@tanstack/react-query';
+import { useUIStore } from '@/store/uiStore';
 
 interface DepositWithdrawModalProps {
   onClose: () => void;
@@ -34,8 +35,12 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   const [walletTxPending, setWalletTxPending] = useState(false);
   const [walletTxError, setWalletTxError] = useState<string | null>(null);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState<{amount: string; destination: string} | null>(null);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const { authType, address, token: authToken } = useWallet();
+  const { addToast } = useUIStore();
   const {
     totalAvailableUSDT,
     depositAddress,
@@ -133,15 +138,44 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
     try {
       const amountWei = BigInt(Math.round(parsedAmount * 1e6)).toString();
       await withdraw({ amount: amountWei, destination });
+      const withdrawnAmount = parsedAmount.toFixed(2);
+      const dest = destination;
       setAmount('');
       setDestination('');
-      onClose();
+      setWithdrawSuccess({ amount: withdrawnAmount, destination: dest });
+      addToast({
+        type: 'success',
+        message: `Withdrawal of ${withdrawnAmount} USDT queued! It will be sent to ${dest.slice(0,6)}...${dest.slice(-4)} on-chain shortly.`,
+      });
+      // Refresh withdrawal history
+      fetchWithdrawalHistory();
     } catch (err: any) {
-      alert(err?.message ?? 'Failed to withdraw');
+      addToast({ type: 'error', message: err?.message ?? 'Failed to withdraw' });
     } finally {
       setIsWithdrawing(false);
     }
   };
+
+  const fetchWithdrawalHistory = async () => {
+    if (!address || !authToken) return;
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/deposits/withdrawals/${address}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWithdrawals(data.withdrawals ?? []);
+      }
+    } catch {}
+    finally { setLoadingHistory(false); }
+  };
+
+  // Load withdrawal history when switching to withdraw tab
+  useEffect(() => {
+    if (activeTab === 'withdraw') fetchWithdrawalHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const handleMintMockUsdt = async () => {
     if (!address) return;
@@ -386,32 +420,98 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
         {/* ── WITHDRAW TAB ─────────────────────────────────────────────────── */}
         {activeTab === 'withdraw' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <label style={labelStyle}>Amount to Withdraw (USDT)</label>
-            <input
-              type="number"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              style={inputStyle}
-            />
-            <label style={labelStyle}>Destination Wallet Address (BEP-20)</label>
-            <input
-              type="text"
-              placeholder="0x..."
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              style={{ ...inputStyle, fontSize: 13 }}
-            />
-            <p style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-              Withdrawals are processed on-chain. Maximum: {formatNumber(displayBalance)} USDT.
-            </p>
-            <button
-              onClick={handleWithdraw}
-              disabled={isWithdrawing || !amount || !destination || parsedAmount > displayBalance}
-              style={{ ...primaryBtn(!isWithdrawing && !!amount && !!destination && parsedAmount <= displayBalance), background: 'var(--sell)' }}
-            >
-              {isWithdrawing ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing...</> : 'Request Withdrawal'}
-            </button>
+
+            {/* Success state */}
+            {withdrawSuccess ? (
+              <div style={{ textAlign: 'center', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'center' }}>
+                <CheckCircle size={40} color="var(--buy)" />
+                <div>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>Withdrawal Queued!</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
+                    {withdrawSuccess.amount} USDT → {withdrawSuccess.destination.slice(0,8)}...{withdrawSuccess.destination.slice(-6)}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+                    Your withdrawal is being processed on-chain by our system. It may take a few minutes.
+                  </div>
+                </div>
+                <button onClick={() => setWithdrawSuccess(null)} style={primaryBtn(true)}>Make Another Withdrawal</button>
+                <button onClick={onClose} style={{ ...primaryBtn(true), background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>Close</button>
+              </div>
+            ) : (
+              <>
+                <label style={labelStyle}>Amount to Withdraw (USDT)</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={inputStyle}
+                />
+                <label style={labelStyle}>Destination Wallet Address (BEP-20)</label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  style={{ ...inputStyle, fontSize: 13 }}
+                />
+                <p style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                  Withdrawals are sent on-chain to your BEP-20 address. Maximum: {formatNumber(displayBalance)} USDT.
+                </p>
+                <button
+                  onClick={handleWithdraw}
+                  disabled={isWithdrawing || !amount || !destination || parsedAmount > displayBalance}
+                  style={{ ...primaryBtn(!isWithdrawing && !!amount && !!destination && parsedAmount <= displayBalance), background: 'var(--sell)' }}
+                >
+                  {isWithdrawing ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing...</> : 'Request Withdrawal'}
+                </button>
+              </>
+            )}
+
+            {/* ── Withdrawal History ─────────────────────────────────── */}
+            {withdrawals.length > 0 && (
+              <div style={{ marginTop: 'var(--space-2)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>WITHDRAWAL HISTORY</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {withdrawals.map((w) => (
+                    <div key={w.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: 'var(--space-2) var(--space-3)',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      gap: 'var(--space-3)',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)' }}>
+                          {(Number(w.amount) / 1e6).toFixed(2)} USDT
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          → {w.destination}
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {formatTimeAgo(w.createdAt)}
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0 }}>
+                        {w.status === 'completed' && w.txHash ? (
+                          <a href={`https://bscscan.com/tx/${w.txHash}`} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--buy)', textDecoration: 'none' }}>
+                            <CheckCircle size={12} /> Sent <ExternalLink size={10} />
+                          </a>
+                        ) : w.status === 'failed' ? (
+                          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--sell)' }}>Failed</span>
+                        ) : (
+                          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
