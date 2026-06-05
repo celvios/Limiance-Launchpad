@@ -131,17 +131,18 @@ export async function runHotWalletWorker() {
         console.log(`[HotWallet] Graduation Tx Sent: ${tx.hash}`);
         const receipt = await tx.wait(1);
 
-        // Step 3: Parse the TokenGraduated event to get the deployed token address
+        // Step 3: Parse the TokenGraduated event to get the deployed token address.
+        // Declare as explicit string — mint is always non-null on a token record.
         const deployerInterface = new ethers.Interface(DEPLOYER_ABI);
-        let deployedTokenAddress = graduatingToken.tokenAddress; // fallback
-        let dexPoolAddress = graduatingToken.tokenAddress;
+        let deployedTokenAddress: string = graduatingToken.tokenAddress || graduatingToken.mint;
+        let dexPoolAddress: string = graduatingToken.tokenAddress || graduatingToken.mint;
 
         for (const log of receipt.logs) {
           try {
             const parsed = deployerInterface.parseLog(log);
             if (parsed?.name === 'TokenGraduated') {
-              deployedTokenAddress = parsed.args.token as string;
-              dexPoolAddress = parsed.args.dexPoolAddress as string;
+              deployedTokenAddress = String(parsed.args.token);
+              dexPoolAddress = String(parsed.args.dexPoolAddress);
               break;
             }
           } catch {
@@ -153,8 +154,8 @@ export async function runHotWalletWorker() {
           where: { id: graduatingToken.id },
           data: {
             status: 'graduated',
-            tokenAddress: (deployedTokenAddress ?? graduatingToken.tokenAddress ?? graduatingToken.mint).toLowerCase(),
-            dexPoolAddress: (dexPoolAddress ?? graduatingToken.tokenAddress ?? graduatingToken.mint).toLowerCase(),
+            tokenAddress: deployedTokenAddress.toLowerCase(),
+            dexPoolAddress: dexPoolAddress.toLowerCase(),
           },
         });
 

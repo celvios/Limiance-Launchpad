@@ -96,6 +96,7 @@ export interface TradeActivity {
   txSignature: string;
   timestamp: number;
   isWhale: boolean;
+  pricePerToken?: number;
 }
 
 export interface ChartDataPoint {

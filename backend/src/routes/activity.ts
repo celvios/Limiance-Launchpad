@@ -74,7 +74,7 @@ export async function activityRoutes(app: FastifyInstance) {
       solAmount: Number(t.solAmount) / 1e6,
       pricePerToken: Number(t.pricePerToken) / 1e18,
       txSignature: t.txSignature,
-      timestamp: t.timestamp.toISOString(),
+      timestamp: t.timestamp.getTime(),
       isWhale: t.isWhale,
     }));
 

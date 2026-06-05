@@ -9,6 +9,7 @@ import { SupplyBar } from '@/components/token/SupplyBar';
 import { GraduationBanner } from '@/components/token/GraduationBanner';
 import { TradePanel } from '@/components/token/TradePanel';
 import { ActivityFeed } from '@/components/token/ActivityFeed';
+import { OrderBook } from '@/components/token/OrderBook';
 import { useGraduationHandler } from '@/hooks/useGraduationHandler';
 import { CommentSection } from '@/components/social/CommentSection';
 
@@ -210,6 +211,10 @@ export function TokenPageClient() {
           }}
         >
           <TradePanel token={token} />
+          
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <OrderBook mint={mint} />
+          </div>
 
           {/* Dev-only: Test graduation sequence */}
           {process.env.NODE_ENV === 'development' && !isGraduated && (
