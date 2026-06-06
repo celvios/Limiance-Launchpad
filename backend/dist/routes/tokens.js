@@ -4,6 +4,7 @@ exports.tokenRoutes = tokenRoutes;
 const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const bsc_1 = require("../services/bsc");
+const server_1 = require("../ws/server");
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DeployBody = zod_1.z.object({
     creator: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -513,9 +514,22 @@ async function tokenRoutes(app) {
                         paymentAmount: trade.paymentAmount?.toString() ?? null,
                         pricePerToken: trade.pricePerToken.toString(),
                     },
+                    tokenSymbol: token.symbol,
                     newSupply: finalSupply.toString(),
                     graduated: type === 'buy' && finalSupply >= token.graduationThreshold
                 };
+            });
+            (0, server_1.broadcast)({
+                id: result.trade.id,
+                type: result.trade.type,
+                tokenMint: result.trade.tokenMint,
+                tokenSymbol: result.tokenSymbol,
+                amount: Number(result.trade.amount) / 1e6,
+                solAmount: Number(result.trade.solAmount) / 1e6,
+                walletAddress: result.trade.walletAddress,
+                txSignature: result.trade.txSignature,
+                timestamp: new Date(result.trade.timestamp).getTime(),
+                isWhale: result.trade.isWhale,
             });
             return reply.send({ success: true, ...result });
         }

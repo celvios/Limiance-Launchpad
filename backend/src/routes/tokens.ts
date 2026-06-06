@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
 import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT, PAYMENT_ASSET } from '../services/bsc';
+import { broadcast } from '../ws/server';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -566,9 +567,23 @@ export async function tokenRoutes(app: FastifyInstance) {
             paymentAmount: trade.paymentAmount?.toString() ?? null,
             pricePerToken: trade.pricePerToken.toString(),
           },
+          tokenSymbol: token.symbol,
           newSupply: finalSupply.toString(),
           graduated: type === 'buy' && finalSupply >= token.graduationThreshold
         };
+      });
+
+      broadcast({
+        id: result.trade.id,
+        type: result.trade.type,
+        tokenMint: result.trade.tokenMint,
+        tokenSymbol: result.tokenSymbol,
+        amount: Number(result.trade.amount) / 1e6,
+        solAmount: Number(result.trade.solAmount) / 1e6,
+        walletAddress: result.trade.walletAddress,
+        txSignature: result.trade.txSignature,
+        timestamp: new Date(result.trade.timestamp).getTime(),
+        isWhale: result.trade.isWhale,
       });
 
       return reply.send({ success: true, ...result });

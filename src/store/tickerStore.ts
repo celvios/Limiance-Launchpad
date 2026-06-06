@@ -39,6 +39,9 @@ export const useTickerStore = create<TickerStore>((set) => ({
 
   addTrade: (trade) =>
     set((state) => {
+      if (state.trades.some((existing) => existing.id === trade.id)) {
+        return state;
+      }
       const updated = [trade, ...state.trades];
       if (updated.length > MAX_TRADES) {
         updated.length = MAX_TRADES;

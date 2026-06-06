@@ -6,11 +6,12 @@ import { useUIStore } from '@/store/uiStore';
 import { Button } from '@/components/ui/Button';
 import { calculateBuyPrice, onChainSellReturn } from '@/lib/curve/math';
 import { formatNumber } from '@/lib/format';
-import { API_BASE_URL, BSC_CHAIN_ID, DEX_NAME } from '@/lib/constants';
+import { API_BASE_URL, DEX_NAME } from '@/lib/constants';
 import { useUserBalance } from '@/hooks/useUserBalance';
 import { useUserTokenBalance } from '@/hooks/useUserTokenBalance';
-import { useQueryClient } from '@tanstack/react-query';
-import type { TokenDetail } from '@/lib/types';
+import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useTickerStore, type TradeEvent } from '@/store/tickerStore';
+import type { TokenDetail, TradeActivity } from '@/lib/types';
 
 interface TradePanelProps {
   token: TokenDetail;
@@ -22,10 +23,39 @@ type TxState = 'idle' | 'confirming' | 'success' | 'error';
 const USDT_PRESETS = [25, 50, 100, 250];
 const SELL_PCTS   = [25, 50, 75, 100];
 
+type TradeApiResponse = {
+  success: boolean;
+  trade?: {
+    id: string;
+    type: 'buy' | 'sell';
+    walletAddress: string;
+    amount: string | number;
+    solAmount: string | number;
+    paymentAmount?: string | number | null;
+    pricePerToken?: string | number;
+    txSignature: string;
+    timestamp: string | number;
+    isWhale: boolean;
+  };
+};
+
+type ActivityPage = {
+  trades: TradeActivity[];
+  nextCursor: string | null;
+};
+
+function scaledNumber(value: string | number | null | undefined, scale: number): number {
+  if (value === null || value === undefined) return 0;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return numeric / scale;
+}
+
 export function TradePanel({ token }: TradePanelProps) {
   const { address, token: authToken } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
   const addToast = useUIStore((s) => s.addToast);
+  const addLiveTrade = useTickerStore((s) => s.addTrade);
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<TradeTab>('buy');
@@ -36,7 +66,7 @@ export function TradePanel({ token }: TradePanelProps) {
 
   // Token balance on platform (for sell tab)
   const tokenId = token.tokenAddress ?? token.mint;
-  const { tokenBalance, tokenBalanceWei, invalidate: invalidateTokenBal } = useUserTokenBalance(tokenId, address);
+  const { tokenBalance, invalidate: invalidateTokenBal } = useUserTokenBalance(tokenId, address);
 
   const inputAmount = parseFloat(inputValue) || 0;
   const isGraduated = token.status === 'graduated';
@@ -52,7 +82,7 @@ export function TradePanel({ token }: TradePanelProps) {
   const sellEstimate = useMemo(() => {
     if (activeTab !== 'sell' || inputAmount <= 0) return null;
     try {
-      const cp = token.curveParams as any;
+      const cp = token.curveParams;
       const params = {
         pMin:   BigInt(Math.round((cp.pMin ?? cp.a ?? 0.00001) * 1e18)),
         paramA: BigInt(Math.round((cp.pMax ?? cp.maxPrice ?? 0.1) * 1e18)),
@@ -71,8 +101,71 @@ export function TradePanel({ token }: TradePanelProps) {
   const invalidateAll = useCallback(() => {
     invalidateTokenBal();
     queryClient.invalidateQueries({ queryKey: ['userBalance'] });
-    queryClient.invalidateQueries({ queryKey: ['tokenDetail'] });
-  }, [invalidateTokenBal, queryClient]);
+    queryClient.invalidateQueries({ queryKey: ['token-detail', token.mint] });
+    queryClient.invalidateQueries({ queryKey: ['token-detail', tokenId] });
+    queryClient.invalidateQueries({ queryKey: ['chart-data', token.mint] });
+    queryClient.invalidateQueries({ queryKey: ['profile-trades', address] });
+  }, [address, invalidateTokenBal, queryClient, token.mint, tokenId]);
+
+  const publishLocalTrade = useCallback((body: TradeApiResponse) => {
+    if (!body.trade) return;
+
+    const timestamp = typeof body.trade.timestamp === 'number'
+      ? body.trade.timestamp
+      : new Date(body.trade.timestamp).getTime();
+    const trade: TradeActivity = {
+      id: body.trade.id,
+      type: body.trade.type,
+      walletAddress: body.trade.walletAddress,
+      walletHandle: null,
+      tokenAmount: scaledNumber(body.trade.amount, 1e6),
+      paymentAmount: scaledNumber(body.trade.paymentAmount, 1e6),
+      solAmount: scaledNumber(body.trade.solAmount, 1e6),
+      pricePerToken: scaledNumber(body.trade.pricePerToken, 1e18),
+      txSignature: body.trade.txSignature,
+      timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+      isWhale: body.trade.isWhale,
+    };
+
+    const upsertTrades = (trades: TradeActivity[] = []) => [
+      trade,
+      ...trades.filter((existing) => existing.id !== trade.id),
+    ];
+
+    queryClient.setQueryData<{ trades: TradeActivity[]; nextCursor: string | null }>(
+      ['token-activity', token.mint],
+      (current) => ({
+        trades: upsertTrades(current?.trades).slice(0, 20),
+        nextCursor: current?.nextCursor ?? null,
+      }),
+    );
+
+    queryClient.setQueryData<InfiniteData<ActivityPage>>(['activity', token.mint], (current) => {
+      if (!current?.pages?.length) return current;
+      return {
+        ...current,
+        pages: current.pages.map((page, index) =>
+          index === 0
+            ? { ...page, trades: upsertTrades(page.trades).slice(0, 20) }
+            : page
+        ),
+      };
+    });
+
+    const liveTrade: TradeEvent = {
+      id: trade.id,
+      type: trade.type,
+      tokenMint: token.mint,
+      tokenSymbol: token.symbol,
+      amount: trade.tokenAmount,
+      solAmount: trade.solAmount,
+      walletAddress: trade.walletAddress,
+      txSignature: trade.txSignature,
+      timestamp: trade.timestamp,
+      isWhale: trade.isWhale,
+    };
+    addLiveTrade(liveTrade);
+  }, [addLiveTrade, queryClient, token.mint, token.symbol]);
 
   // ── Execute Buy ───────────────────────────────────────────────────────────
   const executeBuy = useCallback(async () => {
@@ -99,6 +192,8 @@ export function TradePanel({ token }: TradePanelProps) {
         const data = await res.json();
         throw new Error(data.error || 'Buy failed');
       }
+      const data = await res.json() as TradeApiResponse;
+      publishLocalTrade(data);
       setTxState('success');
       addToast({ type: 'success', message: `Bought ${formatNumber(buyEstimate.tokensOut, 0)} ${token.symbol}!` });
       setInputValue('');
@@ -109,7 +204,7 @@ export function TradePanel({ token }: TradePanelProps) {
       addToast({ type: 'error', message: error instanceof Error ? error.message : 'Buy failed' });
       setTimeout(() => setTxState('idle'), 1000);
     }
-  }, [address, authToken, buyEstimate, inputAmount, usdtBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll]);
+  }, [address, authToken, buyEstimate, inputAmount, usdtBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll, publishLocalTrade]);
 
   // ── Execute Sell ──────────────────────────────────────────────────────────
   const executeSell = useCallback(async () => {
@@ -136,6 +231,8 @@ export function TradePanel({ token }: TradePanelProps) {
         const data = await res.json();
         throw new Error(data.error || 'Sell failed');
       }
+      const data = await res.json() as TradeApiResponse;
+      publishLocalTrade(data);
       setTxState('success');
       addToast({ type: 'success', message: `Sold ${formatNumber(inputAmount, 0)} ${token.symbol} for ~${sellEstimate.usdtReturn.toFixed(2)} USDT!` });
       setInputValue('');
@@ -146,7 +243,7 @@ export function TradePanel({ token }: TradePanelProps) {
       addToast({ type: 'error', message: error instanceof Error ? error.message : 'Sell failed' });
       setTimeout(() => setTxState('idle'), 1000);
     }
-  }, [address, authToken, sellEstimate, inputAmount, tokenBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll]);
+  }, [address, authToken, sellEstimate, inputAmount, tokenBalance, addToast, openWalletDrawer, token, tokenId, invalidateAll, publishLocalTrade]);
 
   // ── Graduated view ────────────────────────────────────────────────────────
   if (isGraduated) {
