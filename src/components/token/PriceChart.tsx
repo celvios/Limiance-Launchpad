@@ -88,7 +88,7 @@ function drawChart(
   const priceRange = allHigh - allLow || allHigh * 0.01;
   const pricePad = priceRange * 0.08;
   const priceMax = allHigh + pricePad;
-  const priceMin = allLow - pricePad;
+  const priceMin = Math.max(0, allLow - pricePad);
   const priceSpan = priceMax - priceMin;
 
   // Volume range
@@ -96,10 +96,13 @@ function drawChart(
   const maxVol = Math.max(...volumes) || 1;
 
   // Candle geometry
-  const maxSpacing = 20;
-  const candleSpacing = Math.max(2, Math.min(chartW / data.length, maxSpacing));
-  const candleW = Math.max(3, candleSpacing * 0.7);
+  const pointSpacing = data.length > 1 ? chartW / (data.length - 1) : chartW;
+  const candleW = Math.max(3, Math.min(12, (data.length > 1 ? pointSpacing : chartW) * 0.55));
   const wickW = Math.max(1, candleW * 0.15);
+  const getX = (index: number) =>
+    data.length === 1
+      ? PADDING.left + chartW / 2
+      : PADDING.left + index * pointSpacing;
 
   // Y helpers
   const priceToY = (p: number) => PADDING.top + (1 - (p - priceMin) / priceSpan) * candleArea;
@@ -127,20 +130,25 @@ function drawChart(
   ctx.setLineDash([]);
 
   // ── Time labels ──
-  const labelInterval = Math.max(1, Math.floor(data.length / 8));
   ctx.fillStyle = COLORS.text;
   ctx.font = '10px "IBM Plex Mono", monospace';
   ctx.textAlign = 'center';
-  for (let i = 0; i < data.length; i += labelInterval) {
-    const x = PADDING.left + i * candleSpacing + candleSpacing / 2;
-    ctx.fillText(formatTime(data[i].time, range), x, height - 8);
+
+  let lastLabelX = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < data.length; i++) {
+    const x = getX(i);
+    const isLast = i === data.length - 1;
+    if (x - lastLabelX > 56 || isLast) {
+      ctx.fillText(formatTime(data[i].time, range), x, height - 8);
+      lastLabelX = x;
+    }
   }
 
   // ── Volume bars ──
   const volBaseY = PADDING.top + candleArea + 8 + volumeH;
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
-    const x = PADDING.left + i * candleSpacing + (candleSpacing - candleW) / 2;
+    const x = getX(i) - candleW / 2;
     const isUp = d.close >= d.open;
     const h = volToH(volumes[i]);
 
@@ -151,7 +159,7 @@ function drawChart(
   // ── Candlesticks ──
   for (let i = 0; i < data.length; i++) {
     const d = data[i];
-    const x = PADDING.left + i * candleSpacing + candleSpacing / 2;
+    const x = getX(i);
     const isUp = d.close >= d.open;
     const color = isUp ? COLORS.up : COLORS.down;
 
@@ -174,10 +182,12 @@ function drawChart(
 
   // ── Crosshair + tooltip ──
   if (mouseX !== null && mouseY !== null && mouseX > PADDING.left && mouseX < PADDING.left + chartW) {
-    const candleIndex = Math.floor((mouseX - PADDING.left) / candleSpacing);
+    const candleIndex = data.length === 1
+      ? 0
+      : Math.round((mouseX - PADDING.left) / pointSpacing);
     if (candleIndex >= 0 && candleIndex < data.length) {
       const d = data[candleIndex];
-      const snapX = PADDING.left + candleIndex * candleSpacing + candleSpacing / 2;
+      const snapX = getX(candleIndex);
 
       // Vertical line
       ctx.strokeStyle = COLORS.crosshair;
