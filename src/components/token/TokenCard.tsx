@@ -51,8 +51,6 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     100
   );
   const isNearGrad = supplyPercent >= 75 && !isGraduated;
-  // Show at least a sliver in the bar when any tokens have been sold
-  const supplyWidth = Math.min(currentSupply > 0 ? Math.max(supplyPercent, 0.5) : 0, 100);
   const remaining = graduationThreshold - currentSupply;
   // Format percentage — show 2 decimal places when < 1% so it never reads '0%'
   const supplyPctDisplay = supplyPercent < 0.01
