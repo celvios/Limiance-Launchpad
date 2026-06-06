@@ -9,6 +9,7 @@ const ERC20_ABI = [
 
 const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
 const paymentContract = new ethers.Contract(PAYMENT_ASSET, ERC20_ABI, provider);
+const INDEXER_BLOCK_BATCH_SIZE = Number(process.env.INDEXER_BLOCK_BATCH_SIZE ?? '2000');
 
 export async function runIndexer() {
   console.log(`[Indexer] Starting BSC Deposit Indexer on ${BSC_RPC_URL}`);
@@ -29,7 +30,7 @@ export async function runIndexer() {
       const currentBlock = await provider.getBlockNumber();
       if (currentBlock <= lastProcessedBlock) return; // Wait for new blocks
 
-      const targetBlock = Math.min(currentBlock, lastProcessedBlock + 10); // Batch size 10 (Alchemy Free Tier limit)
+      const targetBlock = Math.min(currentBlock, lastProcessedBlock + INDEXER_BLOCK_BATCH_SIZE);
       // console.log(`[Indexer] Syncing blocks ${lastProcessedBlock + 1} to ${targetBlock}`);
 
       const filter = paymentContract.filters.Transfer(null, null);
