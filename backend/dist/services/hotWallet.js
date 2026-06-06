@@ -5,6 +5,8 @@ const ethers_1 = require("ethers");
 const prisma_1 = require("./prisma");
 const bsc_1 = require("./bsc");
 const CENTRAL_TREASURY_ABI = [
+    'function getOrCreateDepositVault(address user, address asset) external returns (address)',
+    'function sweepVault(address user, uint256 amount) external returns (uint256)',
     'function processWithdrawal(address to, uint256 amount) external',
 ];
 const ERC20_ABI = [
@@ -15,6 +17,10 @@ const DEPLOYER_ABI = [
     'function deployAndGraduate(string name, string symbol, uint256 totalSupply, uint256 liquidityUsdt) external returns (address)',
     'event TokenGraduated(address indexed token, address indexed dexPoolAddress, uint256 liquidityUsdt, uint256 tokenAmount)',
 ];
+function internalUsdtToOnChainUnits(amount) {
+    // Internal balances are stored with 6 decimals; the BSC test USDT flow uses 18 decimals on-chain.
+    return amount * 1000000000000n;
+}
 async function failWithdrawalWithRefund(withdrawalId, error) {
     return prisma_1.prisma.$transaction(async (tx) => {
         const withdrawal = await tx.withdrawalRequest.findUnique({
@@ -73,7 +79,15 @@ async function runHotWalletWorker() {
                 });
                 console.log(`[HotWallet] Processing withdrawal ${pending.id} of ${pending.amount} to ${pending.destination}`);
                 try {
-                    const tx = await treasuryContract.processWithdrawal(pending.destination, BigInt(pending.amount));
+                    const internalAmount = BigInt(pending.amount);
+                    const onChainAmount = internalUsdtToOnChainUnits(internalAmount);
+                    const vaultTx = await treasuryContract.getOrCreateDepositVault(pending.userWallet, pending.asset);
+                    console.log(`[HotWallet] Ensuring deposit vault exists: ${vaultTx.hash}`);
+                    await vaultTx.wait(1);
+                    const sweepTx = await treasuryContract.sweepVault(pending.userWallet, onChainAmount);
+                    console.log(`[HotWallet] Sweeping ${onChainAmount} from vault: ${sweepTx.hash}`);
+                    await sweepTx.wait(1);
+                    const tx = await treasuryContract.processWithdrawal(pending.destination, onChainAmount);
                     console.log(`[HotWallet] Withdrawal Tx Sent: ${tx.hash}`);
                     await tx.wait(1);
                     await prisma_1.prisma.withdrawalRequest.update({
