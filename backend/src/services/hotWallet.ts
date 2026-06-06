@@ -3,6 +3,7 @@ import { prisma } from './prisma';
 import { BSC_CHAIN_ID, BSC_RPC_URL, TREASURY_ADDRESS, PAYMENT_ASSET, GRADUATION_DEPLOYER_ADDRESS } from './bsc';
 
 const CENTRAL_TREASURY_ABI = [
+  'function predictedDepositVault(address user, address asset) external view returns (address)',
   'function getOrCreateDepositVault(address user, address asset) external returns (address)',
   'function sweepVault(address user, uint256 amount) external returns (uint256)',
   'function processWithdrawal(address to, uint256 amount) external',
@@ -21,6 +22,17 @@ const DEPLOYER_ABI = [
 function internalUsdtToOnChainUnits(amount: bigint): bigint {
   // Internal balances are stored with 6 decimals; the BSC test USDT flow uses 18 decimals on-chain.
   return amount * 1_000_000_000_000n;
+}
+
+function onChainUsdtToInternalUnits(amount: bigint): bigint {
+  return amount / 1_000_000_000_000n;
+}
+
+function isInsufficientVaultBalance(error: unknown): boolean {
+  const err = error as { reason?: string; shortMessage?: string; message?: string };
+  return [err.reason, err.shortMessage, err.message]
+    .filter(Boolean)
+    .some((message) => message!.includes('INSUFFICIENT_VAULT_BALANCE'));
 }
 
 async function failWithdrawalWithRefund(
@@ -65,6 +77,52 @@ async function failWithdrawalWithRefund(
   });
 }
 
+async function reconcileWithdrawalVaultBalance(
+  withdrawalId: string,
+  error: string,
+  vaultInternalBalance: bigint,
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const withdrawal = await tx.withdrawalRequest.findUnique({
+      where: { id: withdrawalId },
+    });
+
+    if (!withdrawal || withdrawal.status === 'completed') {
+      return false;
+    }
+
+    await tx.withdrawalRequest.update({
+      where: { id: withdrawal.id },
+      data: {
+        status: 'failed',
+        error: `${error}\n[reconciled vault balance: ${vaultInternalBalance}]`,
+      },
+    });
+
+    await tx.userBalance.upsert({
+      where: {
+        walletAddress_chainId_asset: {
+          walletAddress: withdrawal.userWallet,
+          chainId: BSC_CHAIN_ID,
+          asset: withdrawal.asset,
+        },
+      },
+      update: {
+        available: vaultInternalBalance,
+      },
+      create: {
+        userId: withdrawal.userId ?? undefined,
+        walletAddress: withdrawal.userWallet,
+        chainId: BSC_CHAIN_ID,
+        asset: withdrawal.asset,
+        available: vaultInternalBalance,
+      },
+    });
+
+    return true;
+  });
+}
+
 export async function runHotWalletWorker() {
   console.log(`[HotWallet] Starting worker on ${BSC_RPC_URL}`);
   const privateKey = process.env.TREASURY_PRIVATE_KEY;
@@ -77,6 +135,24 @@ export async function runHotWalletWorker() {
   const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
   const wallet = new ethers.Wallet(privateKey, provider);
   const treasuryContract = new ethers.Contract(TREASURY_ADDRESS, CENTRAL_TREASURY_ABI, wallet);
+
+  const reconcileVaultBalance = async (withdrawalId: string, error: string) => {
+    const withdrawal = await prisma.withdrawalRequest.findUnique({
+      where: { id: withdrawalId },
+    });
+    if (!withdrawal) return false;
+
+    const vaultAddress = await treasuryContract.predictedDepositVault(withdrawal.userWallet, withdrawal.asset);
+    const assetContract = new ethers.Contract(withdrawal.asset, ERC20_ABI, wallet);
+    const vaultBalance = await assetContract.balanceOf(vaultAddress);
+    const vaultInternalBalance = onChainUsdtToInternalUnits(BigInt(vaultBalance));
+
+    return reconcileWithdrawalVaultBalance(
+      withdrawal.id,
+      error,
+      vaultInternalBalance,
+    );
+  };
 
   setInterval(async () => {
     // ── WITHDRAWALS ──────────────────────────────────────────────────────────
@@ -117,14 +193,45 @@ export async function runHotWalletWorker() {
           console.log(`[HotWallet] Withdrawal ${pending.id} completed!`);
         } catch (err: any) {
           console.error(`[HotWallet] Withdrawal failed:`, err);
-          const refunded = await failWithdrawalWithRefund(
-            pending.id,
-            err.message ?? String(err),
-          );
-          console.log(
-            `[HotWallet] Withdrawal ${pending.id} marked failed${refunded ? ' and refunded' : ''}.`,
-          );
+          if (isInsufficientVaultBalance(err)) {
+            const reconciled = await reconcileVaultBalance(
+              pending.id,
+              err.message ?? String(err),
+            );
+            console.log(
+              `[HotWallet] Withdrawal ${pending.id} marked failed${reconciled ? ' and reconciled to vault balance' : ''}.`,
+            );
+          } else {
+            const refunded = await failWithdrawalWithRefund(
+              pending.id,
+              err.message ?? String(err),
+            );
+            console.log(
+              `[HotWallet] Withdrawal ${pending.id} marked failed${refunded ? ' and refunded' : ''}.`,
+            );
+          }
         }
+      }
+
+      const unreconciledFailed = await prisma.withdrawalRequest.findFirst({
+        where: {
+          status: 'failed',
+          error: {
+            contains: 'INSUFFICIENT_VAULT_BALANCE',
+            not: { contains: '[reconciled vault balance:' },
+          },
+        },
+        orderBy: { updatedAt: 'asc' },
+      });
+
+      if (unreconciledFailed) {
+        const reconciled = await reconcileVaultBalance(
+          unreconciledFailed.id,
+          unreconciledFailed.error ?? 'INSUFFICIENT_VAULT_BALANCE',
+        );
+        console.log(
+          `[HotWallet] Historical failed withdrawal ${unreconciledFailed.id}${reconciled ? ' reconciled to vault balance' : ' skipped'}.`,
+        );
       }
     } catch (err) {
       console.error(`[HotWallet] Withdrawal loop error:`, err);
