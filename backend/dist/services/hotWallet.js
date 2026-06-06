@@ -15,6 +15,40 @@ const DEPLOYER_ABI = [
     'function deployAndGraduate(string name, string symbol, uint256 totalSupply, uint256 liquidityUsdt) external returns (address)',
     'event TokenGraduated(address indexed token, address indexed dexPoolAddress, uint256 liquidityUsdt, uint256 tokenAmount)',
 ];
+async function failWithdrawalWithRefund(withdrawalId, error) {
+    return prisma_1.prisma.$transaction(async (tx) => {
+        const withdrawal = await tx.withdrawalRequest.findUnique({
+            where: { id: withdrawalId },
+        });
+        if (!withdrawal || withdrawal.status === 'failed' || withdrawal.status === 'completed') {
+            return false;
+        }
+        await tx.withdrawalRequest.update({
+            where: { id: withdrawal.id },
+            data: { status: 'failed', error },
+        });
+        await tx.userBalance.upsert({
+            where: {
+                walletAddress_chainId_asset: {
+                    walletAddress: withdrawal.userWallet,
+                    chainId: bsc_1.BSC_CHAIN_ID,
+                    asset: withdrawal.asset,
+                },
+            },
+            update: {
+                available: { increment: withdrawal.amount },
+            },
+            create: {
+                userId: withdrawal.userId ?? undefined,
+                walletAddress: withdrawal.userWallet,
+                chainId: bsc_1.BSC_CHAIN_ID,
+                asset: withdrawal.asset,
+                available: withdrawal.amount,
+            },
+        });
+        return true;
+    });
+}
 async function runHotWalletWorker() {
     console.log(`[HotWallet] Starting worker on ${bsc_1.BSC_RPC_URL}`);
     const privateKey = process.env.TREASURY_PRIVATE_KEY;
@@ -50,10 +84,8 @@ async function runHotWalletWorker() {
                 }
                 catch (err) {
                     console.error(`[HotWallet] Withdrawal failed:`, err);
-                    await prisma_1.prisma.withdrawalRequest.update({
-                        where: { id: pending.id },
-                        data: { status: 'failed', error: err.message ?? String(err) },
-                    });
+                    const refunded = await failWithdrawalWithRefund(pending.id, err.message ?? String(err));
+                    console.log(`[HotWallet] Withdrawal ${pending.id} marked failed${refunded ? ' and refunded' : ''}.`);
                 }
             }
         }

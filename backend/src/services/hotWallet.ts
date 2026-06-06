@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { prisma } from './prisma';
-import { BSC_RPC_URL, TREASURY_ADDRESS, PAYMENT_ASSET, GRADUATION_DEPLOYER_ADDRESS } from './bsc';
+import { BSC_CHAIN_ID, BSC_RPC_URL, TREASURY_ADDRESS, PAYMENT_ASSET, GRADUATION_DEPLOYER_ADDRESS } from './bsc';
 
 const CENTRAL_TREASURY_ABI = [
   'function processWithdrawal(address to, uint256 amount) external',
@@ -15,6 +15,48 @@ const DEPLOYER_ABI = [
   'function deployAndGraduate(string name, string symbol, uint256 totalSupply, uint256 liquidityUsdt) external returns (address)',
   'event TokenGraduated(address indexed token, address indexed dexPoolAddress, uint256 liquidityUsdt, uint256 tokenAmount)',
 ];
+
+async function failWithdrawalWithRefund(
+  withdrawalId: string,
+  error: string,
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const withdrawal = await tx.withdrawalRequest.findUnique({
+      where: { id: withdrawalId },
+    });
+
+    if (!withdrawal || withdrawal.status === 'failed' || withdrawal.status === 'completed') {
+      return false;
+    }
+
+    await tx.withdrawalRequest.update({
+      where: { id: withdrawal.id },
+      data: { status: 'failed', error },
+    });
+
+    await tx.userBalance.upsert({
+      where: {
+        walletAddress_chainId_asset: {
+          walletAddress: withdrawal.userWallet,
+          chainId: BSC_CHAIN_ID,
+          asset: withdrawal.asset,
+        },
+      },
+      update: {
+        available: { increment: withdrawal.amount },
+      },
+      create: {
+        userId: withdrawal.userId ?? undefined,
+        walletAddress: withdrawal.userWallet,
+        chainId: BSC_CHAIN_ID,
+        asset: withdrawal.asset,
+        available: withdrawal.amount,
+      },
+    });
+
+    return true;
+  });
+}
 
 export async function runHotWalletWorker() {
   console.log(`[HotWallet] Starting worker on ${BSC_RPC_URL}`);
@@ -57,10 +99,13 @@ export async function runHotWalletWorker() {
           console.log(`[HotWallet] Withdrawal ${pending.id} completed!`);
         } catch (err: any) {
           console.error(`[HotWallet] Withdrawal failed:`, err);
-          await prisma.withdrawalRequest.update({
-            where: { id: pending.id },
-            data: { status: 'failed', error: err.message ?? String(err) },
-          });
+          const refunded = await failWithdrawalWithRefund(
+            pending.id,
+            err.message ?? String(err),
+          );
+          console.log(
+            `[HotWallet] Withdrawal ${pending.id} marked failed${refunded ? ' and refunded' : ''}.`,
+          );
         }
       }
     } catch (err) {
