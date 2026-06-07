@@ -20,11 +20,16 @@ const INDEXER_BACKFILL_TX_HASHES = (process.env.INDEXER_BACKFILL_TX_HASHES ?? ''
   .split(',')
   .map((hash) => hash.trim())
   .filter(Boolean);
-const VAULT_RECONCILE_INTERVAL_MS = Number(process.env.VAULT_RECONCILE_INTERVAL_MS ?? '15000');
-const VAULT_RECONCILE_LIMIT = Number(process.env.VAULT_RECONCILE_LIMIT ?? '50');
+const VAULT_RECONCILE_INTERVAL_MS = Number(process.env.VAULT_RECONCILE_INTERVAL_MS ?? '30000');
+const VAULT_RECONCILE_LIMIT = Number(process.env.VAULT_RECONCILE_LIMIT ?? '5');
 
 function onChainUsdtToInternalUnits(amount: bigint): bigint {
   return amount / 1000000000000n;
+}
+
+function describeRpcError(error: unknown): string {
+  const err = error as { code?: string; shortMessage?: string; reason?: string; message?: string; info?: { error?: { message?: string } } };
+  return err.shortMessage ?? err.reason ?? err.info?.error?.message ?? err.message ?? String(error);
 }
 
 async function creditDepositTransfer(txHash: string, logIndex: number, toAddress: string, amountRaw: bigint) {
@@ -205,7 +210,12 @@ async function reconcileActiveVaultBalances() {
         `[Indexer] Reconciled vault ${vault.vaultAddress}: credited missing ${missingAmount} to ${vault.userWallet}`,
       );
     } catch (err) {
-      console.error(`[Indexer] Error reconciling vault ${vault.vaultAddress}:`, err);
+      console.warn(`[Indexer] Skipped vault ${vault.vaultAddress}: ${describeRpcError(err)}`);
+    } finally {
+      await prisma.depositAddress.update({
+        where: { id: vault.id },
+        data: { status: vault.status },
+      });
     }
   }
 }
