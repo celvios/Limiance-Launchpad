@@ -30,6 +30,7 @@ const VerifyDepositTxBody = zod_1.z.object({
 });
 const ERC20_ABI = [
     'event Transfer(address indexed from, address indexed to, uint256 value)',
+    'function balanceOf(address account) external view returns (uint256)',
 ];
 const provider = new ethers_1.ethers.JsonRpcProvider(bsc_1.BSC_RPC_URL);
 const erc20Interface = new ethers_1.ethers.Interface(ERC20_ABI);
@@ -42,6 +43,9 @@ function serializeBalance(row) {
         available: row.available.toString(),
         consumed: row.consumed.toString(),
     };
+}
+function onChainUsdtToInternalUnits(amount) {
+    return amount / 1000000000000n;
 }
 async function creditVerifiedDeposit({ userId, userWallet, vaultAddress, asset, chainId, amount, txHash, logIndex, confirmations, }) {
     return prisma_1.prisma.$transaction(async (tx) => {
@@ -357,6 +361,70 @@ async function depositRoutes(app) {
         return reply.code(400).send({
             error: 'Transaction does not contain a supported USDT transfer to your deposit vault',
             code: 'NO_MATCHING_DEPOSIT_TRANSFER',
+        });
+    });
+    app.post('/api/deposits/sync-vault', async (req, reply) => {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet) {
+            return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+        }
+        const parsed = zod_1.z.object({
+            asset: zod_1.z.string().default(bsc_1.PAYMENT_ASSET),
+            chainId: zod_1.z.coerce.number().default(bsc_1.BSC_CHAIN_ID),
+        }).safeParse(req.body ?? {});
+        if (!parsed.success) {
+            return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
+        }
+        const userWallet = (0, bsc_1.normalizeAddress)(session.wallet);
+        const asset = (0, bsc_1.normalizeAddress)(parsed.data.asset);
+        if (!(0, bsc_1.isSupportedAsset)(asset)) {
+            return reply.code(400).send({ error: 'Unsupported deposit asset', code: 'UNSUPPORTED_ASSET' });
+        }
+        const vaultAddress = await (0, bsc_1.predictVaultAddress)(userWallet, asset);
+        const assetContract = new ethers_1.ethers.Contract(asset, ERC20_ABI, provider);
+        const onChainBalance = onChainUsdtToInternalUnits(BigInt(await assetContract.balanceOf(vaultAddress)));
+        const balance = await prisma_1.prisma.userBalance.findUnique({
+            where: {
+                walletAddress_chainId_asset: {
+                    walletAddress: userWallet,
+                    chainId: parsed.data.chainId,
+                    asset,
+                },
+            },
+        });
+        const accountedBalance = balance ? BigInt(balance.available) + BigInt(balance.consumed) : 0n;
+        if (onChainBalance <= accountedBalance) {
+            return reply.send({
+                status: 'synced',
+                credited: false,
+                vaultAddress,
+                onChainBalance: onChainBalance.toString(),
+                accountedBalance: accountedBalance.toString(),
+            });
+        }
+        const missingAmount = onChainBalance - accountedBalance;
+        const syntheticTxHash = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(`vault-sync:${parsed.data.chainId}:${asset}:${vaultAddress}:${onChainBalance}`));
+        const result = await creditVerifiedDeposit({
+            userId: session.userId,
+            userWallet,
+            vaultAddress,
+            asset,
+            chainId: parsed.data.chainId,
+            amount: missingAmount,
+            txHash: syntheticTxHash,
+            logIndex: 0,
+            confirmations: 1,
+        });
+        console.log(`[Deposits] Synced vault ${vaultAddress}: credited missing ${missingAmount} to ${userWallet}`);
+        return reply.send({
+            status: 'credited',
+            credited: !result.alreadyCredited,
+            alreadyCredited: result.alreadyCredited,
+            depositId: result.deposit.id,
+            amount: result.deposit.amount.toString(),
+            vaultAddress,
+            onChainBalance: onChainBalance.toString(),
+            accountedBalance: accountedBalance.toString(),
         });
     });
     app.post('/api/deposits/credit', async (req, reply) => {

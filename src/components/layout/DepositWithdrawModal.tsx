@@ -55,14 +55,37 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   const isWalletUser = authType === 'wallet';
   const parsedAmount = parseFloat(amount) || 0;
 
+  const syncVaultBalance = async () => {
+    if (!authToken) return null;
+
+    const res = await fetch(`${API_BASE_URL}/deposits/sync-vault`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.credited) {
+      queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+      setDepositStep(3);
+    }
+    return data;
+  };
+
   // ── Step 2: poll for balance change after showing address ──────────────────
   useEffect(() => {
     if (depositStep === 2) {
       // Capture the baseline balance when entering step 2
       const baselineBalance = totalAvailableUSDT;
 
+      syncVaultBalance().catch(() => null);
       pollingRef.current = setInterval(() => {
         queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+        syncVaultBalance().catch(() => null);
       }, 3000);
 
       return () => {
