@@ -10,10 +10,106 @@ const ERC20_ABI = [
 ];
 const provider = new ethers_1.ethers.JsonRpcProvider(bsc_1.BSC_RPC_URL);
 const paymentContract = new ethers_1.ethers.Contract(bsc_1.PAYMENT_ASSET, ERC20_ABI, provider);
-const INDEXER_BLOCK_BATCH_SIZE = Number(process.env.INDEXER_BLOCK_BATCH_SIZE ?? '2000');
+const erc20Interface = new ethers_1.ethers.Interface(ERC20_ABI);
+const MAX_FREE_TIER_LOG_RANGE = 10;
+const configuredBlockBatchSize = Number(process.env.INDEXER_BLOCK_BATCH_SIZE ?? String(MAX_FREE_TIER_LOG_RANGE));
+const INDEXER_BLOCK_BATCH_SIZE = Number.isFinite(configuredBlockBatchSize)
+    ? Math.max(1, Math.min(configuredBlockBatchSize, MAX_FREE_TIER_LOG_RANGE))
+    : MAX_FREE_TIER_LOG_RANGE;
+const INDEXER_BACKFILL_TX_HASHES = (process.env.INDEXER_BACKFILL_TX_HASHES ?? '')
+    .split(',')
+    .map((hash) => hash.trim())
+    .filter(Boolean);
+async function creditDepositTransfer(txHash, logIndex, toAddress, amountRaw) {
+    const normalizedToAddress = (0, bsc_1.normalizeAddress)(toAddress);
+    // BSC USDT is 18 decimals, but our internal DB uses 6 decimals.
+    const amountWei = amountRaw / 1000000000000n;
+    // Check if the recipient is one of our tracked DepositVaults.
+    const vault = await prisma_1.prisma.depositAddress.findFirst({
+        where: { vaultAddress: normalizedToAddress },
+    });
+    if (!vault)
+        return false;
+    console.log(`[Indexer] Detected deposit! ${amountWei} USDT to Vault ${normalizedToAddress} (User: ${vault.userWallet})`);
+    // Ensure we haven't already processed this tx hash + log index.
+    const existingDeposit = await prisma_1.prisma.deposit.findUnique({
+        where: { txHash_logIndex: { txHash, logIndex } },
+    });
+    if (existingDeposit)
+        return false;
+    await prisma_1.prisma.$transaction(async (tx) => {
+        await tx.deposit.create({
+            data: {
+                depositAddressId: vault.id,
+                userWallet: vault.userWallet,
+                vaultAddress: normalizedToAddress,
+                chainId: vault.chainId,
+                asset: vault.asset,
+                amount: amountWei,
+                txHash,
+                logIndex,
+                confirmations: 1,
+                credited: true,
+            },
+        });
+        await tx.userBalance.upsert({
+            where: {
+                walletAddress_chainId_asset: {
+                    walletAddress: vault.userWallet,
+                    chainId: vault.chainId,
+                    asset: vault.asset,
+                },
+            },
+            update: {
+                available: { increment: amountWei },
+            },
+            create: {
+                userId: vault.userId,
+                walletAddress: vault.userWallet,
+                chainId: vault.chainId,
+                asset: vault.asset,
+                available: amountWei,
+                consumed: 0n,
+            },
+        });
+    });
+    console.log(`[Indexer] Successfully credited ${amountWei} to ${vault.userWallet}`);
+    return true;
+}
+async function backfillDepositTransactions(txHashes) {
+    if (txHashes.length === 0)
+        return;
+    console.log(`[Indexer] Backfilling ${txHashes.length} deposit transaction(s) by receipt`);
+    for (const txHash of txHashes) {
+        try {
+            const receipt = await provider.getTransactionReceipt(txHash);
+            if (!receipt) {
+                console.log(`[Indexer] Backfill skipped ${txHash}: receipt not found yet`);
+                continue;
+            }
+            for (const log of receipt.logs) {
+                if ((0, bsc_1.normalizeAddress)(log.address) !== (0, bsc_1.normalizeAddress)(bsc_1.PAYMENT_ASSET))
+                    continue;
+                const parsed = erc20Interface.parseLog({
+                    topics: [...log.topics],
+                    data: log.data,
+                });
+                if (!parsed || parsed.name !== 'Transfer')
+                    continue;
+                const toAddress = String(parsed.args.to ?? parsed.args[1]);
+                const amountRaw = BigInt(parsed.args.value ?? parsed.args[2]);
+                await creditDepositTransfer(receipt.hash, log.index, toAddress, amountRaw);
+            }
+        }
+        catch (err) {
+            console.error(`[Indexer] Error backfilling tx ${txHash}:`, err);
+        }
+    }
+}
 async function runIndexer() {
     console.log(`[Indexer] Starting BSC Deposit Indexer on ${bsc_1.BSC_RPC_URL}`);
     console.log(`[Indexer] Listening for ${bsc_1.PAYMENT_ASSET} transfers`);
+    console.log(`[Indexer] Using ${INDEXER_BLOCK_BATCH_SIZE}-block log batches`);
     // Simple polling mechanism
     let lastProcessedBlock = await provider.getBlockNumber();
     // Look up last processed block from DB if we have a state tracker
@@ -22,6 +118,7 @@ async function runIndexer() {
         lastProcessedBlock = Number(state.lastBlockProcessed);
         console.log(`[Indexer] Resuming from block ${lastProcessedBlock}`);
     }
+    await backfillDepositTransactions(INDEXER_BACKFILL_TX_HASHES);
     setInterval(async () => {
         try {
             const currentBlock = await provider.getBlockNumber();
@@ -34,61 +131,7 @@ async function runIndexer() {
             for (const log of logs) {
                 if (!('args' in log))
                     continue; // Ensure it's an EventLog
-                const toAddress = (0, bsc_1.normalizeAddress)(log.args[1]);
-                // BSC USDT is 18 decimals, but our internal DB uses 6 decimals.
-                const amountWei = BigInt(log.args[2]) / 1000000000000n;
-                // Check if the recipient 'toAddress' is one of our tracked DepositVaults
-                const vault = await prisma_1.prisma.depositAddress.findFirst({
-                    where: { vaultAddress: toAddress },
-                });
-                if (vault) {
-                    console.log(`[Indexer] Detected deposit! ${amountWei} USDT to Vault ${toAddress} (User: ${vault.userWallet})`);
-                    // Ensure we haven't already processed this tx Hash (Idempotency)
-                    const existingDeposit = await prisma_1.prisma.deposit.findUnique({
-                        where: { txHash_logIndex: { txHash: log.transactionHash, logIndex: log.index } },
-                    });
-                    if (!existingDeposit) {
-                        await prisma_1.prisma.$transaction(async (tx) => {
-                            // 1. Record the Deposit
-                            await tx.deposit.create({
-                                data: {
-                                    depositAddressId: vault.id,
-                                    userWallet: vault.userWallet,
-                                    vaultAddress: toAddress,
-                                    chainId: vault.chainId,
-                                    asset: vault.asset,
-                                    amount: amountWei,
-                                    txHash: log.transactionHash,
-                                    logIndex: log.index,
-                                    confirmations: 1,
-                                    credited: true,
-                                },
-                            });
-                            // 2. Credit UserBalance
-                            await tx.userBalance.upsert({
-                                where: {
-                                    walletAddress_chainId_asset: {
-                                        walletAddress: vault.userWallet,
-                                        chainId: vault.chainId,
-                                        asset: vault.asset,
-                                    },
-                                },
-                                update: {
-                                    available: { increment: amountWei },
-                                },
-                                create: {
-                                    userId: vault.userId,
-                                    walletAddress: vault.userWallet,
-                                    chainId: vault.chainId,
-                                    asset: vault.asset,
-                                    available: amountWei,
-                                    consumed: 0n,
-                                },
-                            });
-                        });
-                        console.log(`[Indexer] Successfully credited ${amountWei} to ${vault.userWallet}`);
-                    }
-                }
+                await creditDepositTransfer(log.transactionHash, log.index, log.args[1], BigInt(log.args[2]));
             }
             // Update state
             lastProcessedBlock = targetBlock;
