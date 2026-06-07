@@ -73,10 +73,32 @@ async function chartRoutes(app) {
             b.volume += t.solAmount;
         }
         const formatPrice = (p) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
-        // Emit OHLC in each bucket
-        const data = Array.from(bucketMap.values())
-            .sort((a, b) => a.time - b.time)
-            .map((b) => ({
+        const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+        const firstBucketTime = sortedBuckets[0].time;
+        const lastBucketTime = range === 'all'
+            ? sortedBuckets[sortedBuckets.length - 1].time
+            : Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
+        const filledBuckets = [];
+        let previousClose = sortedBuckets[0].open;
+        for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
+            const bucket = bucketMap.get(time);
+            if (bucket) {
+                filledBuckets.push(bucket);
+                previousClose = bucket.close;
+            }
+            else {
+                filledBuckets.push({
+                    time,
+                    open: previousClose,
+                    high: previousClose,
+                    low: previousClose,
+                    close: previousClose,
+                    volume: 0n,
+                });
+            }
+        }
+        // Emit OHLC in each bucket. Empty buckets become flat candles so the chart remains continuous.
+        const data = filledBuckets.map((b) => ({
             time: b.time,
             open: formatPrice(b.open),
             high: formatPrice(b.high),

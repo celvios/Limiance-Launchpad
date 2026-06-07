@@ -76,11 +76,11 @@ function drawChart(
     return;
   }
 
-  const PADDING = { top: 16, right: 72, bottom: 32, left: 12 };
+  const PADDING = { top: 18, right: 78, bottom: 34, left: 12 };
   const chartW = width - PADDING.left - PADDING.right;
   const chartH = height - PADDING.top - PADDING.bottom;
-  const volumeH = chartH * 0.15;
-  const candleArea = chartH - volumeH - 8; // 8px gap
+  const volumeH = chartH * 0.22;
+  const candleArea = chartH - volumeH - 10; // 10px gap
 
   // Price range
   const allHigh = Math.max(...data.map((d) => d.high));
@@ -92,13 +92,13 @@ function drawChart(
   const priceSpan = priceMax - priceMin;
 
   // Volume range
-  const volumes = data.map((d) => Math.abs(d.close - d.open) * 100000);
+  const volumes = data.map((d) => d.volume ?? Math.abs(d.close - d.open) * 100000);
   const maxVol = Math.max(...volumes) || 1;
 
   // Candle geometry
   const pointSpacing = data.length > 1 ? chartW / (data.length - 1) : chartW;
-  const candleW = Math.max(3, Math.min(12, (data.length > 1 ? pointSpacing : chartW) * 0.55));
-  const wickW = Math.max(1, candleW * 0.15);
+  const candleW = Math.max(2, Math.min(10, (data.length > 1 ? pointSpacing : chartW) * 0.72));
+  const wickW = Math.max(1, Math.min(2, candleW * 0.18));
   const getX = (index: number) =>
     data.length === 1
       ? PADDING.left + chartW / 2
@@ -111,7 +111,7 @@ function drawChart(
   // ── Grid lines ──
   ctx.strokeStyle = COLORS.grid;
   ctx.lineWidth = 1;
-  ctx.setLineDash([2, 4]);
+  ctx.setLineDash([]);
   const gridLines = 5;
   for (let i = 0; i <= gridLines; i++) {
     const y = PADDING.top + (candleArea / gridLines) * i;
@@ -127,7 +127,14 @@ function drawChart(
     ctx.textAlign = 'left';
     ctx.fillText(formatPrice(price), PADDING.left + chartW + 8, y + 4);
   }
-  ctx.setLineDash([]);
+  const verticalGridLines = 6;
+  for (let i = 0; i <= verticalGridLines; i++) {
+    const x = PADDING.left + (chartW / verticalGridLines) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, PADDING.top);
+    ctx.lineTo(x, PADDING.top + chartH);
+    ctx.stroke();
+  }
 
   // ── Time labels ──
   ctx.fillStyle = COLORS.text;
@@ -152,7 +159,7 @@ function drawChart(
     const isUp = d.close >= d.open;
     const h = volToH(volumes[i]);
 
-    ctx.fillStyle = isUp ? COLORS.upDim : COLORS.downDim;
+    ctx.fillStyle = isUp ? 'rgba(0, 255, 102, 0.36)' : 'rgba(255, 45, 85, 0.34)';
     ctx.fillRect(x, volBaseY - h, candleW, h);
   }
 
@@ -179,6 +186,11 @@ function drawChart(
     ctx.fillStyle = color;
     ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
   }
+
+  ctx.fillStyle = COLORS.labelText;
+  ctx.font = '11px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Vol ${Math.round(maxVol).toLocaleString()}`, PADDING.left, PADDING.top + 12);
 
   // ── Crosshair + tooltip ──
   if (mouseX !== null && mouseY !== null && mouseX > PADDING.left && mouseX < PADDING.left + chartW) {

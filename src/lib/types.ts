@@ -106,6 +106,7 @@ export interface ChartDataPoint {
   low: number;
   close: number;
   value: number; // for area chart — same as close
+  volume?: number;
 }
 
 export type ChartTimeRange = '1H' | '4H' | '1D' | 'ALL';

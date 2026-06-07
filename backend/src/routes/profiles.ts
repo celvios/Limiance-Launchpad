@@ -387,6 +387,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
 
       const PAYMENT_UNIT = 1_000_000_000_000_000_000n;
+      const INTERNAL_PAYMENT_UNIT = 1_000_000n;
       const TOKEN_DECIMALS = 1_000_000n;
 
       const holdings = netHoldings
@@ -403,15 +404,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
             BigInt(token.supplyCap.toString())
           );
 
-          const avgBuyWei =
+          const avgBuyInternal =
             h.buyAmount > BigInt(0)
-              ? Number((h.solSpent * TOKEN_DECIMALS) / h.buyAmount)
-              : 0;
+              ? (h.solSpent * TOKEN_DECIMALS) / h.buyAmount
+              : 0n;
 
           const currentWei = Number(currentPrice);
+          const currentInternal = currentPrice / (PAYMENT_UNIT / INTERNAL_PAYMENT_UNIT);
           const pnlPercent =
-            avgBuyWei > 0
-              ? ((currentWei - avgBuyWei) / avgBuyWei) * 100
+            avgBuyInternal > 0n
+              ? ((Number(currentInternal) - Number(avgBuyInternal)) / Number(avgBuyInternal)) * 100
               : 0;
 
           const valueWei = (h.net * BigInt(currentWei)) / TOKEN_DECIMALS;
@@ -422,7 +424,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
             symbol: token.symbol,
             name: token.name,
             amount: Number(h.net) / Number(TOKEN_DECIMALS),
-            avgBuyPrice: avgBuyWei / Number(PAYMENT_UNIT),
+            avgBuyPrice: Number(avgBuyInternal) / Number(INTERNAL_PAYMENT_UNIT),
             currentPrice: currentWei / Number(PAYMENT_UNIT),
             pnlPercent: Math.round(pnlPercent * 100) / 100,
             value: Math.round(valuePayment * 1e6) / 1e6,

@@ -296,6 +296,7 @@ async function profileRoutes(fastify) {
         const tokens = await prisma_1.prisma.token.findMany({ where: { mint: { in: mints } } });
         const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
         const PAYMENT_UNIT = 1000000000000000000n;
+        const INTERNAL_PAYMENT_UNIT = 1000000n;
         const TOKEN_DECIMALS = 1000000n;
         const holdings = netHoldings
             .map((h) => {
@@ -303,12 +304,13 @@ async function profileRoutes(fastify) {
             if (!token)
                 return null;
             const currentPrice = (0, price_1.computeSpotPrice)(token.curveType, BigInt(token.curveParamA.toString()), BigInt(token.curveParamB.toString()), BigInt(token.curveParamC.toString()), BigInt(token.currentSupply.toString()), BigInt(token.supplyCap.toString()));
-            const avgBuyWei = h.buyAmount > BigInt(0)
-                ? Number((h.solSpent * TOKEN_DECIMALS) / h.buyAmount)
-                : 0;
+            const avgBuyInternal = h.buyAmount > BigInt(0)
+                ? (h.solSpent * TOKEN_DECIMALS) / h.buyAmount
+                : 0n;
             const currentWei = Number(currentPrice);
-            const pnlPercent = avgBuyWei > 0
-                ? ((currentWei - avgBuyWei) / avgBuyWei) * 100
+            const currentInternal = currentPrice / (PAYMENT_UNIT / INTERNAL_PAYMENT_UNIT);
+            const pnlPercent = avgBuyInternal > 0n
+                ? ((Number(currentInternal) - Number(avgBuyInternal)) / Number(avgBuyInternal)) * 100
                 : 0;
             const valueWei = (h.net * BigInt(currentWei)) / TOKEN_DECIMALS;
             const valuePayment = Number(valueWei) / Number(PAYMENT_UNIT);
@@ -317,7 +319,7 @@ async function profileRoutes(fastify) {
                 symbol: token.symbol,
                 name: token.name,
                 amount: Number(h.net) / Number(TOKEN_DECIMALS),
-                avgBuyPrice: avgBuyWei / Number(PAYMENT_UNIT),
+                avgBuyPrice: Number(avgBuyInternal) / Number(INTERNAL_PAYMENT_UNIT),
                 currentPrice: currentWei / Number(PAYMENT_UNIT),
                 pnlPercent: Math.round(pnlPercent * 100) / 100,
                 value: Math.round(valuePayment * 1e6) / 1e6,
