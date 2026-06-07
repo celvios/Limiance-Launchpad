@@ -93,6 +93,38 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
     setDepositStep(2);
   };
 
+  const verifyDepositTx = async (txHash: string) => {
+    if (!authToken) throw new Error('Not authenticated');
+
+    const expectedAmount = BigInt(Math.floor(parsedAmount * 1e6)).toString();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const res = await fetch(`${API_BASE_URL}/deposits/verify-tx`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ txHash, expectedAmount }),
+      });
+
+      if (res.status === 202) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        continue;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Deposit could not be verified');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+      setDepositStep(3);
+      return data;
+    }
+
+    throw new Error('Deposit transaction is still pending. Keep this window open or check again shortly.');
+  };
+
   // Wallet users: send USDT directly from their wallet to the vault address
   const handleWalletSend = async () => {
     if (!amount || !depositAddress || !address) return;
@@ -119,6 +151,7 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
         params: [{ from: address, to: USDT_ADDRESS, data }],
       });
       setWalletTxHash(txHash as string);
+      await verifyDepositTx(txHash as string);
     } catch (err: any) {
       // Clean up MetaMask's default RPC errors which are confusing
       const msg = err?.message ?? 'Transaction rejected';

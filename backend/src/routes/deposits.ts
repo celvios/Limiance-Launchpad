@@ -1,8 +1,10 @@
 import { FastifyInstance } from 'fastify';
+import { ethers } from 'ethers';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
 import {
   BSC_CHAIN_ID,
+  BSC_RPC_URL,
   PAYMENT_ASSET,
   isSupportedAsset,
   normalizeAddress,
@@ -28,6 +30,20 @@ const CreditDepositBody = z.object({
   confirmations: z.number().int().min(0).default(0),
 });
 
+const VerifyDepositTxBody = z.object({
+  txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  expectedAmount: z.string().regex(/^\d+$/).optional(),
+  asset: z.string().default(PAYMENT_ASSET),
+  chainId: z.coerce.number().default(BSC_CHAIN_ID),
+});
+
+const ERC20_ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+];
+
+const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
+const erc20Interface = new ethers.Interface(ERC20_ABI);
+
 function serializeBalance(row: any) {
   return {
     userId: row.userId ?? null,
@@ -37,6 +53,98 @@ function serializeBalance(row: any) {
     available: row.available.toString(),
     consumed: row.consumed.toString(),
   };
+}
+
+async function creditVerifiedDeposit({
+  userId,
+  userWallet,
+  vaultAddress,
+  asset,
+  chainId,
+  amount,
+  txHash,
+  logIndex,
+  confirmations,
+}: {
+  userId?: string;
+  userWallet: string;
+  vaultAddress: string;
+  asset: string;
+  chainId: number;
+  amount: bigint;
+  txHash: string;
+  logIndex: number;
+  confirmations: number;
+}) {
+  return prisma.$transaction(async (tx: any) => {
+    const depositAddress = await tx.depositAddress.upsert({
+      where: {
+        userWallet_chainId_asset: {
+          userWallet,
+          chainId,
+          asset,
+        },
+      },
+      update: { vaultAddress, userId },
+      create: {
+        userId,
+        userWallet,
+        chainId,
+        asset,
+        vaultAddress,
+      },
+    });
+
+    const existingDeposit = await tx.deposit.findUnique({
+      where: { txHash_logIndex: { txHash, logIndex } },
+    });
+
+    if (existingDeposit) {
+      const deposit = await tx.deposit.update({
+        where: { txHash_logIndex: { txHash, logIndex } },
+        data: { confirmations },
+      });
+      return { deposit, alreadyCredited: true };
+    }
+
+    const deposit = await tx.deposit.create({
+      data: {
+        depositAddressId: depositAddress.id,
+        vaultAddress,
+        userWallet,
+        chainId,
+        asset,
+        amount,
+        txHash,
+        logIndex,
+        confirmations,
+        credited: true,
+      },
+    });
+
+    await tx.userBalance.upsert({
+      where: {
+        walletAddress_chainId_asset: {
+          walletAddress: userWallet,
+          chainId,
+          asset,
+        },
+      },
+      update: {
+        userId,
+        available: { increment: amount },
+      },
+      create: {
+        userId,
+        walletAddress: userWallet,
+        chainId,
+        asset,
+        available: amount,
+      },
+    });
+
+    return { deposit, alreadyCredited: false };
+  });
 }
 
 export async function depositRoutes(app: FastifyInstance) {
@@ -172,6 +280,47 @@ export async function depositRoutes(app: FastifyInstance) {
     return reply.code(200).send({ success: true, credited: '10000.00' });
   });
 
+  // ── Admin-only: Mint USDT to any wallet ──────────────────────────────────────
+  app.post('/api/deposits/admin-mint', async (req, reply) => {
+    const secret = (req.headers['x-admin-secret'] as string) ?? '';
+    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+
+    const body = z.object({
+      wallet: z.string(),
+      amount: z.number().positive(), // USDT amount (e.g. 100000)
+    }).safeParse(req.body);
+
+    if (!body.success) {
+      return reply.code(400).send({ error: body.error.message });
+    }
+
+    const walletAddress = normalizeAddress(body.data.wallet);
+    const amountRaw = BigInt(Math.floor(body.data.amount * 1e6)); // 6 decimals
+
+    await (prisma as any).userBalance.upsert({
+      where: {
+        walletAddress_chainId_asset: {
+          walletAddress,
+          chainId: BSC_CHAIN_ID,
+          asset: PAYMENT_ASSET,
+        },
+      },
+      update: {
+        available: { increment: amountRaw.toString() },
+      },
+      create: {
+        walletAddress,
+        chainId: BSC_CHAIN_ID,
+        asset: PAYMENT_ASSET,
+        available: amountRaw.toString(),
+      },
+    });
+
+    return reply.send({ success: true, wallet: walletAddress, credited: body.data.amount });
+  });
+
   app.get('/api/deposits/history/:wallet', async (req, reply) => {
     const { wallet } = req.params as { wallet: string };
     const walletAddress = normalizeAddress(wallet);
@@ -194,6 +343,84 @@ export async function depositRoutes(app: FastifyInstance) {
         consumed: deposit.consumed,
         createdAt: deposit.createdAt.getTime(),
       })),
+    });
+  });
+
+  app.post('/api/deposits/verify-tx', async (req, reply) => {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
+    const parsed = VerifyDepositTxBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
+    }
+
+    const userWallet = normalizeAddress(session.wallet);
+    const asset = normalizeAddress(parsed.data.asset);
+    if (!isSupportedAsset(asset)) {
+      return reply.code(400).send({ error: 'Unsupported deposit asset', code: 'UNSUPPORTED_ASSET' });
+    }
+
+    const txHash = parsed.data.txHash.toLowerCase();
+    const vaultAddress = await predictVaultAddress(userWallet, asset);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return reply.code(202).send({ status: 'pending', credited: false });
+    }
+
+    const currentBlock = await provider.getBlockNumber();
+    const confirmations = Math.max(1, currentBlock - receipt.blockNumber + 1);
+    const expectedAmount = parsed.data.expectedAmount ? BigInt(parsed.data.expectedAmount) : null;
+
+    for (const log of receipt.logs) {
+      if (normalizeAddress(log.address) !== asset) continue;
+
+      const transfer = (() => {
+        try {
+          return erc20Interface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } catch {
+          return null;
+        }
+      })();
+      if (!transfer || transfer.name !== 'Transfer') continue;
+
+      const toAddress = normalizeAddress(String(transfer.args.to ?? transfer.args[1]));
+      if (toAddress !== vaultAddress) continue;
+
+      const amountRaw = BigInt(transfer.args.value ?? transfer.args[2]);
+      const amount = amountRaw / 1000000000000n;
+      if (expectedAmount !== null && amount < expectedAmount) continue;
+
+      const result = await creditVerifiedDeposit({
+        userId: session.userId,
+        userWallet,
+        vaultAddress,
+        asset,
+        chainId: parsed.data.chainId,
+        amount,
+        txHash,
+        logIndex: log.index,
+        confirmations,
+      });
+
+      return reply.send({
+        status: 'credited',
+        credited: true,
+        alreadyCredited: result.alreadyCredited,
+        depositId: result.deposit.id,
+        amount: result.deposit.amount.toString(),
+        confirmations,
+      });
+    }
+
+    return reply.code(400).send({
+      error: 'Transaction does not contain a supported USDT transfer to your deposit vault',
+      code: 'NO_MATCHING_DEPOSIT_TRANSFER',
     });
   });
 
