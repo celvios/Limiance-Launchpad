@@ -4,7 +4,8 @@ import { BSC_RPC_URL, PAYMENT_ASSET, normalizeAddress } from './bsc';
 
 // Standard ERC20 ABI for Transfer event
 const ERC20_ABI = [
-  'event Transfer(address indexed from, address indexed to, uint256 value)'
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'function balanceOf(address account) external view returns (uint256)',
 ];
 
 const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
@@ -19,6 +20,12 @@ const INDEXER_BACKFILL_TX_HASHES = (process.env.INDEXER_BACKFILL_TX_HASHES ?? ''
   .split(',')
   .map((hash) => hash.trim())
   .filter(Boolean);
+const VAULT_RECONCILE_INTERVAL_MS = Number(process.env.VAULT_RECONCILE_INTERVAL_MS ?? '15000');
+const VAULT_RECONCILE_LIMIT = Number(process.env.VAULT_RECONCILE_LIMIT ?? '50');
+
+function onChainUsdtToInternalUnits(amount: bigint): bigint {
+  return amount / 1000000000000n;
+}
 
 async function creditDepositTransfer(txHash: string, logIndex: number, toAddress: string, amountRaw: bigint) {
   const normalizedToAddress = normalizeAddress(toAddress);
@@ -115,6 +122,94 @@ async function backfillDepositTransactions(txHashes: string[]) {
   }
 }
 
+async function reconcileActiveVaultBalances() {
+  const limit = Number.isFinite(VAULT_RECONCILE_LIMIT) && VAULT_RECONCILE_LIMIT > 0
+    ? VAULT_RECONCILE_LIMIT
+    : 50;
+
+  const vaults = await prisma.depositAddress.findMany({
+    where: {
+      status: 'active',
+      asset: normalizeAddress(PAYMENT_ASSET),
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: limit,
+  });
+
+  for (const vault of vaults) {
+    try {
+      const onChainBalance = onChainUsdtToInternalUnits(
+        BigInt(await paymentContract.balanceOf(vault.vaultAddress)),
+      );
+      const balance = await prisma.userBalance.findUnique({
+        where: {
+          walletAddress_chainId_asset: {
+            walletAddress: vault.userWallet,
+            chainId: vault.chainId,
+            asset: vault.asset,
+          },
+        },
+      });
+      const accountedBalance = balance ? BigInt(balance.available) + BigInt(balance.consumed) : 0n;
+      if (onChainBalance <= accountedBalance) continue;
+
+      const missingAmount = onChainBalance - accountedBalance;
+      const txHash = ethers.keccak256(
+        ethers.toUtf8Bytes(`vault-sync:${vault.chainId}:${vault.asset}:${vault.vaultAddress}:${onChainBalance}`),
+      );
+      const existingDeposit = await prisma.deposit.findUnique({
+        where: { txHash_logIndex: { txHash, logIndex: 0 } },
+      });
+      if (existingDeposit) continue;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.deposit.create({
+          data: {
+            depositAddressId: vault.id,
+            userWallet: vault.userWallet,
+            vaultAddress: vault.vaultAddress,
+            chainId: vault.chainId,
+            asset: vault.asset,
+            amount: missingAmount,
+            txHash,
+            logIndex: 0,
+            confirmations: 1,
+            credited: true,
+          },
+        });
+
+        await tx.userBalance.upsert({
+          where: {
+            walletAddress_chainId_asset: {
+              walletAddress: vault.userWallet,
+              chainId: vault.chainId,
+              asset: vault.asset,
+            },
+          },
+          update: {
+            userId: vault.userId,
+            available: { increment: missingAmount },
+          },
+          create: {
+            userId: vault.userId,
+            walletAddress: vault.userWallet,
+            chainId: vault.chainId,
+            asset: vault.asset,
+            available: missingAmount,
+            consumed: 0n,
+          },
+        });
+      });
+
+      console.log(
+        `[Indexer] Reconciled vault ${vault.vaultAddress}: credited missing ${missingAmount} to ${vault.userWallet}`,
+      );
+    } catch (err) {
+      console.error(`[Indexer] Error reconciling vault ${vault.vaultAddress}:`, err);
+    }
+  }
+}
+
 export async function runIndexer() {
   console.log(`[Indexer] Starting BSC Deposit Indexer on ${BSC_RPC_URL}`);
   console.log(`[Indexer] Listening for ${PAYMENT_ASSET} transfers`);
@@ -131,6 +226,16 @@ export async function runIndexer() {
   }
 
   await backfillDepositTransactions(INDEXER_BACKFILL_TX_HASHES);
+
+  setInterval(async () => {
+    try {
+      await reconcileActiveVaultBalances();
+    } catch (err) {
+      console.error(`[Indexer] Vault reconciliation loop error:`, err);
+    }
+  }, Number.isFinite(VAULT_RECONCILE_INTERVAL_MS) && VAULT_RECONCILE_INTERVAL_MS > 0
+    ? VAULT_RECONCILE_INTERVAL_MS
+    : 15000);
 
   setInterval(async () => {
     try {
