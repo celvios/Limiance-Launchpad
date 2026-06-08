@@ -3,21 +3,23 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Plus, Heart, Menu, X } from 'lucide-react';
+import { Home, Search, Plus, Wallet, User, Menu, X } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWatchlistStore } from '@/store/watchlistStore';
+import { useWallet } from '@/providers/BscWalletProvider';
 
 export function BottomNav() {
   const pathname = usePathname();
   const { isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
   const watchlistCount = useWatchlistStore((s) => s.count());
+  const { address } = useWallet();
 
   const tabs = [
-    { id: 'feed', label: 'Feed', icon: Home, href: '/' },
-    { id: 'explore', label: 'Explore', icon: Compass, href: '/explore' },
+    { id: 'feed', label: 'Home', icon: Home, href: '/' },
+    { id: 'explore', label: 'Search', icon: Search, href: '/explore' },
     { id: 'launch', label: 'Launch', icon: Plus, href: '/create', isLaunch: true },
-    { id: 'watch', label: 'Watch', icon: Heart, href: '/profile#watchlist', hasBadge: true },
-    { id: 'menu', label: 'Menu', icon: isMobileMenuOpen ? X : Menu, action: () => setMobileMenuOpen(!isMobileMenuOpen) },
+    { id: 'wallet', label: 'Wallet', icon: Wallet, href: '/wallet' },
+    { id: 'profile', label: 'Profile', icon: User, href: address ? `/profile/${address}` : '/profile' },
   ];
 
   return (

@@ -1,23 +1,33 @@
-const { ethers } = require("ethers");
-
-const rpcUrl = "https://bnb-testnet.g.alchemy.com/v2/IlLHtpK6nF1KPiWYQHxb7";
-const privateKey = "8535a93559f1f9d75f06d478d5d929f760d7ced3e93282054830c126e1a64654";
-const usdtAddress = "0x701e59e245B25851D9a8E4C92741Aa98EB1E922f";
-const targetAddress = "0x74e46a5f8ce5205599cc3fef8466afea0c869084";
-const abi = ["function mint(address to, uint256 amount) external"];
+const { PrismaClient } = require('@prisma/client');
 
 async function main() {
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const contract = new ethers.Contract(usdtAddress, abi, wallet);
-  
-  console.log("Minting 100 USDT to", targetAddress);
-  const amount = ethers.parseUnits("100", 18);
-  const tx = await contract.mint(targetAddress, amount);
-  console.log("Tx hash:", tx.hash);
-  console.log("Waiting for confirmation...");
-  await tx.wait();
-  console.log("Tokens minted successfully.");
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: 'postgresql://limiancedb_user:XSV0qslcMSYH7BnpT92xN1wSF5fGBFk4@dpg-d8g517ugvqtc73bkppo0-a.oregon-postgres.render.com/limiancedb',
+      },
+    },
+  });
+
+  // Credit 100,000 USDT to the user's REAL wallet
+  const result = await prisma.userBalance.update({
+    where: {
+      walletAddress_chainId_asset: {
+        walletAddress: '0xd366f97bd67301e48ad36caf8773b9c97c4053a3',
+        chainId: 56,
+        asset: '0x701e59e245b25851d9a8e4c92741aa98eb1e922f',
+      },
+    },
+    data: {
+      available: { increment: '100000000000' }, // 100,000 USDT (6 decimals)
+    },
+  });
+
+  const balanceUSDT = Number(result.available) / 1e6;
+  console.log(`Done! Minted 100,000 USDT to 0xd366f97bd67301e48ad36caf8773b9c97c4053a3`);
+  console.log(`New balance: ${balanceUSDT.toLocaleString()} USDT`);
+
+  await prisma.$disconnect();
 }
 
 main().catch(console.error);

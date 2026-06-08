@@ -708,3 +708,25 @@ export async function fetchProfileComments(
   return res.json() as Promise<ProfileCommentsResponse>;
 }
 
+export async function fetchProfileNetworth(
+  walletAddress: string
+): Promise<{ time: number; value: number }[]> {
+  if (USE_MOCK) {
+    await delay(300);
+    const data = [];
+    let currentVal = 500000;
+    for (let i = 30; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      currentVal += (Math.random() - 0.45) * 50000;
+      if (currentVal < 10000) currentVal = 10000;
+      data.push({ time: Math.floor(d.getTime() / 1000), value: Math.round(currentVal * 100) / 100 });
+    }
+    return data;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/profiles/${walletAddress}/networth`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const data = await res.json() as { networth: { time: number; value: number }[] };
+  return data.networth;
+}

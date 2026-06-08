@@ -558,6 +558,35 @@ export async function profileRoutes(fastify: FastifyInstance) {
       return reply.send({ following: false });
     }
   );
+  // Net worth history (Mocked for now)
+  fastify.get<{ Params: { wallet: string } }>(
+    '/api/profiles/:wallet/networth',
+    async (req, reply) => {
+      const { wallet } = req.params;
+      
+      // Since historical net worth tracking isn't implemented on-chain yet,
+      // we generate a realistic-looking 30-day sparkline around a base value.
+      // In production, this would query a daily snapshot table.
+      const data = [];
+      let currentVal = 500000; // start around $500k
+      
+      for (let i = 30; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        // Random walk
+        currentVal += (Math.random() - 0.45) * 50000; // Bias slightly upward
+        if (currentVal < 10000) currentVal = 10000;
+        
+        data.push({
+          time: Math.floor(d.getTime() / 1000), // Unix timestamp
+          value: Math.round(currentVal * 100) / 100
+        });
+      }
+
+      // Format for lightweight-charts: { time: number, value: number }[]
+      return reply.send({ networth: data });
+    }
+  );
 }
 
 

@@ -13,6 +13,7 @@ import {
   fetchProfileHoldings,
   fetchProfileTrades,
   fetchProfileComments,
+  fetchProfileNetworth,
 } from '@/lib/api';
 import type { UserProfile } from '@/lib/types';
 
