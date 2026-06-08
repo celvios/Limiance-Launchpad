@@ -75,9 +75,7 @@ async function chartRoutes(app) {
         const formatPrice = (p) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
         const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
         const firstBucketTime = sortedBuckets[0].time;
-        const lastBucketTime = range === 'all'
-            ? sortedBuckets[sortedBuckets.length - 1].time
-            : Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
+        const lastBucketTime = sortedBuckets[sortedBuckets.length - 1].time;
         const filledBuckets = [];
         let previousClose = sortedBuckets[0].open;
         for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {

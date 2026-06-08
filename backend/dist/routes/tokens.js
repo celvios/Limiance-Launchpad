@@ -139,6 +139,29 @@ function getSigmoidIntegral(supply, pMin, pMax, _k, graduationThreshold) {
     }
     return total;
 }
+function estimateBuyTokensForPayment(paymentUsdt, currentSupply, pMin, pMax, graduationThreshold) {
+    if (paymentUsdt <= 0)
+        return 0;
+    const remaining = Math.max(0, graduationThreshold - currentSupply);
+    if (remaining <= 0)
+        return 0;
+    let lo = 0;
+    let hi = remaining;
+    let tokensOut = 0;
+    for (let i = 0; i < 48; i++) {
+        const mid = (lo + hi) / 2;
+        const cost = getSigmoidIntegral(currentSupply + mid, pMin, pMax, 0, graduationThreshold) -
+            getSigmoidIntegral(currentSupply, pMin, pMax, 0, graduationThreshold);
+        if (cost <= paymentUsdt) {
+            tokensOut = mid;
+            lo = mid;
+        }
+        else {
+            hi = mid;
+        }
+    }
+    return Math.floor(tokensOut);
+}
 function serializeToken(token, creatorHandle, counts = emptyCounts()) {
     const tokenAddress = token.tokenAddress ?? token.mint;
     const supply = Number(token.currentSupply.toString());
@@ -382,23 +405,18 @@ async function tokenRoutes(app) {
             wallet: zod_1.z.string(),
             type: zod_1.z.enum(['buy', 'sell']),
             amountUsdt: zod_1.z.number().positive(), // USDT to spend (buy) or USDT to receive (sell)
-            amountTokens: zod_1.z.number().positive(), // Tokens to receive (buy) or tokens to sell (sell)
+            amountTokens: zod_1.z.number().nonnegative().optional(), // Optional for buys; required for sells
         });
         const parsed = TradeBody.safeParse(req.body);
         if (!parsed.success) {
             return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
         }
-        const { wallet, type, amountUsdt, amountTokens } = parsed.data;
+        const { wallet, type, amountUsdt } = parsed.data;
         const userWallet = (0, bsc_1.normalizeAddress)(wallet);
         const { address: tokenAddressParam } = req.params;
         const tokenAddress = tokenAddressParam.toLowerCase();
-        // USDT: 6 decimals for DB storage
-        // Tokens: TWO representations needed:
-        //   amountTokensRaw  = raw integer units (matches Token.currentSupply / graduationThreshold scale)
-        //   amountTokensWei  = 6-decimal units for UserTokenBalance (fits in Postgres BIGINT)
+        // USDT: 6 decimals for DB storage.
         const amountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
-        const amountTokensRaw = BigInt(Math.round(amountTokens)); // for currentSupply
-        const amountTokensWei = BigInt(Math.round(amountTokens * 1e6)); // for UserTokenBalance
         try {
             const result = await prisma_1.prisma.$transaction(async (tx) => {
                 const token = await tx.token.findFirst({
@@ -413,6 +431,21 @@ async function tokenRoutes(app) {
                 const usdtBalance = await tx.userBalance.findFirst({
                     where: { walletAddress: userWallet, asset: bsc_1.PAYMENT_ASSET },
                 });
+                const pMax = Number(token.curveParamA.toString()) / 1e18;
+                const pMin = Number(token.curveParamB.toString()) / 1e18;
+                const currentSupply = Number(token.currentSupply.toString());
+                const graduationThreshold = Number(token.graduationThreshold.toString());
+                const resolvedAmountTokens = type === 'buy'
+                    ? estimateBuyTokensForPayment(amountUsdt, currentSupply, pMin, pMax, graduationThreshold)
+                    : (parsed.data.amountTokens ?? 0);
+                if (resolvedAmountTokens <= 0) {
+                    throw new Error(type === 'buy' ? 'Amount is too small for the current curve price' : 'Token amount must be greater than 0');
+                }
+                // Tokens: TWO representations needed:
+                //   amountTokensRaw = raw integer units for currentSupply/graduationThreshold.
+                //   amountTokensWei = 6-decimal units for UserTokenBalance.
+                const amountTokensRaw = BigInt(Math.round(resolvedAmountTokens));
+                const amountTokensWei = BigInt(Math.round(resolvedAmountTokens * 1e6));
                 if (type === 'buy') {
                     // ── BUY ──────────────────────────────────────────────────────────────
                     if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
@@ -497,7 +530,7 @@ async function tokenRoutes(app) {
                         solAmount: amountUsdtWei,
                         paymentAmount: amountUsdtWei,
                         paymentAsset: bsc_1.PAYMENT_ASSET,
-                        pricePerToken: amountTokens > 0 ? BigInt(Math.round((amountUsdt / amountTokens) * 1e18)) : 0n,
+                        pricePerToken: resolvedAmountTokens > 0 ? BigInt(Math.round((amountUsdt / resolvedAmountTokens) * 1e18)) : 0n,
                         txSignature: `internal-${type}-${Date.now()}`,
                         timestamp: new Date(),
                         isWhale: amountUsdt >= 1000,

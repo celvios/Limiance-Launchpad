@@ -96,9 +96,7 @@ export async function chartRoutes(app: FastifyInstance) {
 
     const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
     const firstBucketTime = sortedBuckets[0].time;
-    const lastBucketTime = range === 'all'
-      ? sortedBuckets[sortedBuckets.length - 1].time
-      : Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
+    const lastBucketTime = sortedBuckets[sortedBuckets.length - 1].time;
 
     const filledBuckets: Bucket[] = [];
     let previousClose = sortedBuckets[0].open;

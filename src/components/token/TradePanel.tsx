@@ -4,7 +4,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useUIStore } from '@/store/uiStore';
 import { Button } from '@/components/ui/Button';
-import { calculateBuyPrice, onChainSellReturn } from '@/lib/curve/math';
+import { onChainSellReturn } from '@/lib/curve/math';
 import { formatNumber } from '@/lib/format';
 import { API_BASE_URL, DEX_NAME } from '@/lib/constants';
 import { useUserBalance } from '@/hooks/useUserBalance';
@@ -51,6 +51,62 @@ function scaledNumber(value: string | number | null | undefined, scale: number):
   return numeric / scale;
 }
 
+function sigmoidPrice(supply: number, pMin: number, pMax: number, graduationThreshold: number): number {
+  if (graduationThreshold <= 0) return pMin;
+  const midpoint = graduationThreshold / 2;
+  const normalizedSupply = supply / midpoint;
+  return pMin + (pMax - pMin) / (1 + Math.exp(-10 * (normalizedSupply - 1)));
+}
+
+function sigmoidIntegral(supply: number, pMin: number, pMax: number, graduationThreshold: number): number {
+  if (graduationThreshold <= 0) return 0;
+  const steps = 100;
+  const step = supply / steps;
+  let total = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const x0 = i * step;
+    const x1 = (i + 1) * step;
+    total += ((sigmoidPrice(x0, pMin, pMax, graduationThreshold) + sigmoidPrice(x1, pMin, pMax, graduationThreshold)) * step) / 2;
+  }
+  return total;
+}
+
+function estimateBuyFromPayment(paymentUsdt: number, token: TokenDetail) {
+  if (paymentUsdt <= 0) return { tokensOut: 0, avgPrice: 0, priceImpact: 0 };
+
+  const pMin = token.curveParams.pMin ?? token.curveParams.a ?? 0.00001;
+  const pMax = token.curveParams.pMax ?? token.curveParams.maxPrice ?? 0.1;
+  const graduationThreshold = token.graduationThreshold;
+  const currentSupply = token.currentSupply;
+  const remaining = Math.max(0, graduationThreshold - currentSupply);
+  if (remaining <= 0) return { tokensOut: 0, avgPrice: 0, priceImpact: 0 };
+
+  let lo = 0;
+  let hi = remaining;
+  let tokensOut = 0;
+  const startCost = sigmoidIntegral(currentSupply, pMin, pMax, graduationThreshold);
+
+  for (let i = 0; i < 48; i += 1) {
+    const mid = (lo + hi) / 2;
+    const cost = sigmoidIntegral(currentSupply + mid, pMin, pMax, graduationThreshold) - startCost;
+    if (cost <= paymentUsdt) {
+      tokensOut = mid;
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  const roundedTokens = Math.floor(tokensOut);
+  const startPrice = sigmoidPrice(currentSupply, pMin, pMax, graduationThreshold);
+  const endPrice = sigmoidPrice(currentSupply + roundedTokens, pMin, pMax, graduationThreshold);
+  return {
+    tokensOut: roundedTokens,
+    avgPrice: roundedTokens > 0 ? paymentUsdt / roundedTokens : 0,
+    priceImpact: startPrice > 0 ? Math.max(0, ((endPrice - startPrice) / startPrice) * 100) : 0,
+  };
+}
+
 export function TradePanel({ token }: TradePanelProps) {
   const { address, token: authToken } = useWallet();
   const openWalletDrawer = useUIStore((s) => s.openWalletDrawer);
@@ -75,8 +131,8 @@ export function TradePanel({ token }: TradePanelProps) {
   // ── Buy estimate ──────────────────────────────────────────────────────────
   const buyEstimate = useMemo(() => {
     if (activeTab !== 'buy' || inputAmount <= 0) return null;
-    return calculateBuyPrice(inputAmount, token.currentSupply, token.curveParams);
-  }, [activeTab, inputAmount, token.currentSupply, token.curveParams]);
+    return estimateBuyFromPayment(inputAmount, token);
+  }, [activeTab, inputAmount, token]);
 
   // ── Sell estimate ─────────────────────────────────────────────────────────
   const sellEstimate = useMemo(() => {
