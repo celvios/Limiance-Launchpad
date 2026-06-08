@@ -13,7 +13,7 @@ const DeployBody = zod_1.z.object({
     description: zod_1.z.string().max(500).default(''),
     imageUri: zod_1.z.string().default(''),
     totalSupply: zod_1.z.number().int().positive(),
-    initialBuyAmount: zod_1.z.number().min(0).default(0),
+    initialBuyAmount: zod_1.z.number().int().min(0).default(0),
     graduationThreshold: zod_1.z.number().min(40).max(100),
     curveParams: zod_1.z.object({
         pMin: zod_1.z.number().optional(),
@@ -227,6 +227,8 @@ async function tokenRoutes(app) {
             const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
             const supplyCap = BigInt(body.totalSupply);
             const graduationThreshold = (supplyCap * BigInt(body.graduationThreshold)) / 100n;
+            const pMax = body.curveParams.pMax ?? 0.1;
+            const pMin = body.curveParams.pMin ?? 0.00001;
             const token = await prisma_1.prisma.token.create({
                 data: {
                     mint: tokenAddress,
@@ -243,8 +245,8 @@ async function tokenRoutes(app) {
                     graduationThreshold,
                     creatorAllocation: 0,
                     curveType: 'sigmoid',
-                    curveParamA: toWei(body.curveParams.pMax ?? 0.1),
-                    curveParamB: toWei(body.curveParams.pMin ?? 0.00001),
+                    curveParamA: toWei(pMax),
+                    curveParamB: toWei(pMin),
                     curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
                     status: 'active',
                 },
@@ -253,65 +255,85 @@ async function tokenRoutes(app) {
             let initialSolAmountWei = 0n;
             let costUsdt = 0;
             if (body.initialBuyAmount > 0) {
-                const priceUsdt = body.curveParams.pMin ?? 0.00001;
-                costUsdt = body.initialBuyAmount * priceUsdt;
-                initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6)); // 1e6 for solAmount
+                costUsdt = getSigmoidIntegral(body.initialBuyAmount, pMin, pMax, 0, Number(graduationThreshold));
+                initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6));
             }
             const creationFeeUsdt = bsc_1.TOKEN_CREATION_FEE_USDT; // Read from RENDER env var
-            const totalCostUsdt = costUsdt + creationFeeUsdt;
+            const initialBuyFeeUsdt = costUsdt * 0.01;
+            const totalCostUsdt = costUsdt + initialBuyFeeUsdt + creationFeeUsdt;
             const totalCostWei = BigInt(Math.floor(totalCostUsdt * 1e6));
             // Charge the user — check balance first
-            const balance = await prisma_1.prisma.userBalance.findFirst({
+            const balances = await prisma_1.prisma.userBalance.findMany({
                 where: {
                     walletAddress: creator,
                     asset: bsc_1.PAYMENT_ASSET,
                 },
             });
-            if (!balance || balance.available < totalCostWei) {
+            const availableWei = balances.reduce((sum, row) => sum + row.available, 0n);
+            if (availableWei < totalCostWei) {
                 // Roll back token creation and return error
                 await prisma_1.prisma.token.delete({ where: { id: token.id } });
                 return reply.code(402).send({
-                    error: `Insufficient balance. Need ${totalCostUsdt.toFixed(2)} USDT (${creationFeeUsdt} fee + ${costUsdt.toFixed(2)} initial buy).`,
+                    error: `Insufficient balance. Need ${totalCostUsdt.toFixed(2)} USDT (${creationFeeUsdt} fee + ${costUsdt.toFixed(2)} initial buy + ${initialBuyFeeUsdt.toFixed(2)} initial buy fee).`,
                     code: 'INSUFFICIENT_BALANCE',
                     required: totalCostWei.toString(),
                     creationFee: BigInt(Math.floor(creationFeeUsdt * 1e6)).toString(),
                 });
             }
-            await prisma_1.prisma.userBalance.upsert({
-                where: {
-                    walletAddress_chainId_asset: {
-                        walletAddress: creator,
-                        chainId: 97, // Assuming BSC Testnet for simulation
-                        asset: bsc_1.PAYMENT_ASSET,
-                    },
-                },
-                update: {
-                    available: { decrement: totalCostWei },
-                    consumed: { increment: totalCostWei },
-                },
-                create: {
-                    walletAddress: creator,
-                    chainId: 97,
-                    asset: bsc_1.PAYMENT_ASSET,
-                    available: 10000000000n - totalCostWei, // Give 10k mock USDT initially if no balance
-                    consumed: totalCostWei,
-                },
+            let remainingDebit = totalCostWei;
+            const debitRows = [...balances].sort((a, b) => {
+                if (a.chainId === bsc_1.BSC_CHAIN_ID && b.chainId !== bsc_1.BSC_CHAIN_ID)
+                    return -1;
+                if (a.chainId !== bsc_1.BSC_CHAIN_ID && b.chainId === bsc_1.BSC_CHAIN_ID)
+                    return 1;
+                return b.available > a.available ? 1 : -1;
             });
+            for (const row of debitRows) {
+                if (remainingDebit <= 0n)
+                    break;
+                const debitAmount = row.available < remainingDebit ? row.available : remainingDebit;
+                if (debitAmount <= 0n)
+                    continue;
+                await prisma_1.prisma.userBalance.update({
+                    where: { id: row.id },
+                    data: {
+                        available: { decrement: debitAmount },
+                        consumed: { increment: debitAmount },
+                    },
+                });
+                remainingDebit -= debitAmount;
+            }
             if (body.initialBuyAmount > 0) {
+                const initialTokenAmountRaw = BigInt(body.initialBuyAmount);
+                const initialTokenAmountWei = initialTokenAmountRaw * 1000000n;
+                await prisma_1.prisma.userTokenBalance.upsert({
+                    where: {
+                        walletAddress_tokenAddress: {
+                            walletAddress: creator,
+                            tokenAddress,
+                        },
+                    },
+                    update: { amount: { increment: initialTokenAmountWei } },
+                    create: {
+                        walletAddress: creator,
+                        tokenAddress,
+                        amount: initialTokenAmountWei,
+                    },
+                });
                 await prisma_1.prisma.trade.create({
                     data: {
                         tokenMint: tokenAddress,
                         tokenAddress,
                         walletAddress: creator,
                         type: 'buy',
-                        amount: BigInt(body.initialBuyAmount),
+                        amount: initialTokenAmountWei,
                         solAmount: initialSolAmountWei,
                         paymentAmount: initialSolAmountWei,
                         paymentAsset: bsc_1.PAYMENT_ASSET,
-                        pricePerToken: toWei(body.curveParams.pMin ?? 0.00001),
+                        pricePerToken: initialTokenAmountRaw > 0n ? BigInt(Math.round((costUsdt / body.initialBuyAmount) * 1e18)) : toWei(pMin),
                         txSignature: `initial-buy-${token.id}`,
                         timestamp: new Date(),
-                        isWhale: false,
+                        isWhale: costUsdt >= 1000,
                     },
                 });
             }

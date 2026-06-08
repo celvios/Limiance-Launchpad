@@ -351,7 +351,9 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
             color: 'var(--text-primary)',
           }}
         >
-          {currentPrice < 0.001
+          {currentPrice < 0.0001
+            ? currentPrice.toFixed(8)
+            : currentPrice < 0.001
             ? currentPrice.toFixed(6)
             : currentPrice < 1
             ? currentPrice.toFixed(4)

@@ -122,7 +122,7 @@ export function OrderBook({ mint }: OrderBookProps) {
               >
                 {/* Price */}
                 <div style={{ flex: 1, color: color, fontWeight: 500 }}>
-                  {price.toFixed(7)}
+                  {price < 0.0001 ? price.toFixed(8) : price.toFixed(7)}
                 </div>
 
                 {/* Amount */}

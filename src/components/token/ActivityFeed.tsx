@@ -116,7 +116,7 @@ export function ActivityFeed({ mint }: ActivityFeedProps) {
                     {formatNumber(trade.tokenAmount, 0)}
                   </td>
                   <td style={{ padding: 'var(--space-2) var(--space-3)', color: color }}>
-                    ${price.toFixed(7)}
+                    ${price < 0.0001 ? price.toFixed(8) : price.toFixed(7)}
                   </td>
                   <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
                     <Link

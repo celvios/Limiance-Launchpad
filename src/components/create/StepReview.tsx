@@ -6,10 +6,30 @@ import { useCreateTokenStore } from '@/hooks/useCreateToken';
 import { useUIStore } from '@/store/uiStore';
 import { useInitializeToken } from '@/hooks/useInitializeToken';
 import { useUserBalance } from '@/hooks/useUserBalance';
-import { calculatePrice } from '@/lib/curve/math';
 import { Button } from '@/components/ui/Button';
 import { TOKEN_CREATION_FEE_USDT } from '@/lib/constants';
 import { AlertTriangle, CheckCircle, Wallet } from 'lucide-react';
+
+function sigmoidPrice(supply: number, pMin: number, pMax: number, graduationThreshold: number): number {
+  if (graduationThreshold <= 0) return pMin;
+  const midpoint = graduationThreshold / 2;
+  const normalizedSupply = supply / midpoint;
+  return pMin + (pMax - pMin) / (1 + Math.exp(-10 * (normalizedSupply - 1)));
+}
+
+function sigmoidIntegral(amount: number, pMin: number, pMax: number, graduationThreshold: number, steps = 50): number {
+  if (amount <= 0 || graduationThreshold <= 0) return 0;
+  const stepSize = amount / steps;
+  let total = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const s1 = i * stepSize;
+    const s2 = (i + 1) * stepSize;
+    const p1 = sigmoidPrice(s1, pMin, pMax, graduationThreshold);
+    const p2 = sigmoidPrice(s2, pMin, pMax, graduationThreshold);
+    total += ((p1 + p2) / 2) * stepSize;
+  }
+  return total;
+}
 
 /* ── Step 3 — Review & Deploy ── */
 
@@ -32,12 +52,13 @@ export function StepReview() {
   // Simulation: trapezoidal integration over the bonding curve
   const simulation = useMemo(() => {
     const supply = formData.totalSupply;
-    // Pass totalSupply so toOnChain() can normalize slope correctly
-    const calcP = (s: number) => calculatePrice(s, formData.curveParams, supply);
+    const pMin = formData.curveParams.pMin ?? formData.curveParams.a ?? 0.00001;
+    const pMax = formData.curveParams.pMax ?? formData.curveParams.maxPrice ?? 0.1;
+    const gradSupply = Math.floor(supply * formData.graduationThreshold / 100);
+    const calcP = (s: number) => sigmoidPrice(s, pMin, pMax, gradSupply);
 
     const startPrice = calcP(0);
     const halfSupply  = Math.floor(supply * 0.5);
-    const gradSupply  = Math.floor(supply * formData.graduationThreshold / 100);
     const halfPrice   = calcP(halfSupply);
     const gradPrice   = calcP(gradSupply);
 
@@ -56,15 +77,7 @@ export function StepReview() {
 
     let initialBuyCost = 0;
     if (formData.initialBuyAmount > 0) {
-      const initialSteps = 50;
-      const initialStepSize = formData.initialBuyAmount / initialSteps;
-      for (let i = 0; i < initialSteps; i++) {
-        const s1 = i * initialStepSize;
-        const s2 = (i + 1) * initialStepSize;
-        const p1 = calcP(s1);
-        const p2 = calcP(s2);
-        initialBuyCost += ((p1 + p2) / 2) * initialStepSize;
-      }
+      initialBuyCost = sigmoidIntegral(formData.initialBuyAmount, pMin, pMax, gradSupply);
     }
     const initialBuyFee = initialBuyCost * 0.01; // 1% fee
     const initialBuyTotalCost = initialBuyCost + initialBuyFee;
