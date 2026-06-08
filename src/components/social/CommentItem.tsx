@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { MessageCircle, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Heart, MessageCircle, ThumbsDown } from 'lucide-react';
 import { formatAddress, formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import type { Comment } from '@/lib/types';
@@ -13,9 +13,10 @@ interface CommentItemProps {
   onReply: (commentId: string, text: string) => void;
   onReact: (commentId: string, type: 'like' | 'dislike') => void;
   depth?: number;
+  replyMode?: 'inline' | 'select';
 }
 
-export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: CommentItemProps) {
+export function CommentItem({ comment, canReply, onReply, onReact, depth = 0, replyMode = 'inline' }: CommentItemProps) {
   const [isReplying, setIsReplying] = React.useState(false);
   const [replyText, setReplyText] = React.useState('');
   const displayName = comment.walletHandle
@@ -133,14 +134,15 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: 
             alignItems: 'center',
             gap: '4px',
             padding: '2px var(--space-2)',
-            background: comment.viewerReaction === 'like' ? 'var(--buy-dim)' : 'transparent',
+            background: 'transparent',
             border: 'none',
             borderRadius: 'var(--radius-sm)',
             fontFamily: 'var(--font-mono)',
             fontSize: '12px',
-            color: comment.viewerReaction === 'like' ? 'var(--buy)' : 'var(--text-muted)',
+            color: comment.viewerReaction === 'like' ? 'var(--sell)' : 'var(--text-muted)',
             cursor: canReply ? 'pointer' : 'not-allowed',
             transition: 'all var(--duration-fast)',
+            transform: comment.viewerReaction === 'like' ? 'scale(1.08)' : 'scale(1)',
           }}
           onMouseEnter={(e) => {
             if (comment.viewerReaction !== 'like') {
@@ -153,7 +155,14 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: 
             }
           }}
         >
-          <ThumbsUp size={12} />
+          <Heart
+            size={13}
+            fill={comment.viewerReaction === 'like' ? 'currentColor' : 'none'}
+            style={{
+              transition: 'transform 180ms var(--ease-default), fill 180ms var(--ease-default)',
+              animation: comment.viewerReaction === 'like' ? 'heartPop 260ms var(--ease-default)' : undefined,
+            }}
+          />
           {likeCount}
           </button>
           <button
@@ -164,7 +173,7 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: 
               alignItems: 'center',
               gap: '4px',
               padding: '2px var(--space-2)',
-              background: comment.viewerReaction === 'dislike' ? 'rgba(255, 77, 109, 0.12)' : 'transparent',
+              background: 'transparent',
               border: 'none',
               borderRadius: 'var(--radius-sm)',
               fontFamily: 'var(--font-mono)',
@@ -172,13 +181,27 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: 
               color: comment.viewerReaction === 'dislike' ? 'var(--sell)' : 'var(--text-muted)',
               cursor: canReply ? 'pointer' : 'not-allowed',
               transition: 'all var(--duration-fast)',
+              transform: comment.viewerReaction === 'dislike' ? 'scale(1.08)' : 'scale(1)',
             }}
           >
-            <ThumbsDown size={12} />
+            <ThumbsDown
+              size={13}
+              fill={comment.viewerReaction === 'dislike' ? 'currentColor' : 'none'}
+              style={{
+                transition: 'transform 180ms var(--ease-default), fill 180ms var(--ease-default)',
+                animation: comment.viewerReaction === 'dislike' ? 'dislikePop 260ms var(--ease-default)' : undefined,
+              }}
+            />
             {dislikeCount}
           </button>
           <button
-            onClick={() => setIsReplying((value) => !value)}
+            onClick={() => {
+              if (replyMode === 'select') {
+                onReply(comment.id, '');
+                return;
+              }
+              setIsReplying((value) => !value);
+            }}
             disabled={!canReply}
             style={{
               display: 'inline-flex',
@@ -265,6 +288,7 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0 }: 
           onReply={onReply}
           onReact={onReact}
           depth={depth + 1}
+          replyMode={replyMode}
         />
       ))}
     </div>

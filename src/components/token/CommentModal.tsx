@@ -7,18 +7,20 @@ import { Button } from '@/components/ui/Button';
 import { formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { usePostComment, useComments } from '@/hooks/useComments';
+import { usePostComment, useComments, useReactToComment } from '@/hooks/useComments';
 import { CommentItem } from '@/components/social/CommentItem';
-import type { TokenCardData } from '@/lib/types';
+import type { Comment, TokenCardData } from '@/lib/types';
 
 export function CommentModal() {
   const { activeModal, closeModal, modalData, addToast, openWalletDrawer } = useUIStore();
-  const { address } = useWallet();
+  const { address, connected } = useWallet();
   const [commentText, setCommentText] = useState('');
+  const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
 
   const token = modalData as TokenCardData | null;
   const isOpen = activeModal === 'comment-modal' && !!token;
   const postMutation = usePostComment(token?.mint ?? '');
+  const reactionMutation = useReactToComment(token?.mint ?? '');
   const { data: commentsData } = useComments(token?.mint ?? '', 'top');
 
   if (!isOpen || !token) return null;
@@ -31,9 +33,14 @@ export function CommentModal() {
     }
 
     try {
-      await postMutation.mutateAsync({ text: commentText.trim(), walletAddress: address });
+      await postMutation.mutateAsync({
+        text: commentText.trim(),
+        walletAddress: address,
+        parentId: replyTarget?.id,
+      });
       addToast({ type: 'success', message: 'Reply posted!' });
       setCommentText('');
+      setReplyTarget(null);
       closeModal();
     } catch (e) {
       addToast({ type: 'error', message: 'Failed to post reply' });
@@ -93,8 +100,29 @@ export function CommentModal() {
               {token.description}
             </p>
             <div style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>
-              Replying to <span style={{ color: 'var(--brand)' }}>@{token.creatorHandle}</span>
+              Replying to{' '}
+              <span style={{ color: 'var(--brand)' }}>
+                {replyTarget
+                  ? (replyTarget.walletHandle ? `@${replyTarget.walletHandle}` : replyTarget.walletAddress.slice(0, 6))
+                  : `@${token.creatorHandle}`}
+              </span>
             </div>
+            {replyTarget && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '8px 10px',
+                  borderLeft: '2px solid var(--brand)',
+                  background: 'var(--bg-elevated)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {replyTarget.text}
+              </div>
+            )}
           </div>
         </div>
 
@@ -155,9 +183,15 @@ export function CommentModal() {
                 <CommentItem
                   key={comment.id}
                   comment={comment}
-                  canReply={false}
-                  onReply={() => {}}
-                  onReact={() => {}}
+                  canReply={connected}
+                  onReply={(commentId) => {
+                    const target = commentsData.comments
+                      .flatMap((item) => [item, ...(item.replies ?? [])])
+                      .find((item) => item.id === commentId);
+                    setReplyTarget(target ?? comment);
+                  }}
+                  onReact={(commentId, type) => reactionMutation.mutate({ commentId, type })}
+                  replyMode="select"
                 />
               ))}
             </div>
