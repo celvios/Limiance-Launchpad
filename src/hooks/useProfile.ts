@@ -122,6 +122,15 @@ export function useProfileHoldings(walletAddress: string) {
   });
 }
 
+export function useProfileNetworth(walletAddress: string) {
+  return useQuery({
+    queryKey: ['profile-networth', walletAddress],
+    queryFn: () => fetchProfileNetworth(walletAddress),
+    enabled: !!walletAddress,
+    staleTime: 60_000,
+  });
+}
+
 export function useProfileTrades(walletAddress: string) {
   return useQuery({
     queryKey: ['profile-trades', walletAddress],

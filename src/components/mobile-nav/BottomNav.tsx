@@ -3,10 +3,20 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, Plus, Wallet, User, Menu, X } from 'lucide-react';
+import { Home, Search, Plus, Wallet, User, type LucideIcon } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWatchlistStore } from '@/store/watchlistStore';
 import { useWallet } from '@/providers/BscWalletProvider';
+
+interface NavTab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  href?: string;
+  isLaunch?: boolean;
+  hasBadge?: boolean;
+  action?: () => void;
+}
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -14,7 +24,7 @@ export function BottomNav() {
   const watchlistCount = useWatchlistStore((s) => s.count());
   const { address } = useWallet();
 
-  const tabs = [
+  const tabs: NavTab[] = [
     { id: 'feed', label: 'Home', icon: Home, href: '/' },
     { id: 'explore', label: 'Search', icon: Search, href: '/explore' },
     { id: 'launch', label: 'Launch', icon: Plus, href: '/create', isLaunch: true },
@@ -83,7 +93,6 @@ export function BottomNav() {
         const InnerContent = (
           <>
             <div style={{ position: 'relative' }}>
-              {/* @ts-ignore */}
               <Icon 
                 size={22} 
                 style={{

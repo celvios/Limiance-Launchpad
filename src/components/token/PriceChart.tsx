@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, Time, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
 import { useChartData } from '@/hooks/useTokenDetail';
 import type { ChartTimeRange, ChartDataPoint } from '@/lib/types';
 
@@ -89,7 +89,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     chartRef.current = chart;
 
     // Add Candlestick Series
-    const candlestickSeries = chart.addCandlestickSeries({
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#00FF66',
       downColor: '#FF2D55',
       borderVisible: false,
@@ -99,7 +99,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     candlestickSeriesRef.current = candlestickSeries;
 
     // Add Volume Series (Histogram)
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#26a69a',
       priceFormat: { type: 'volume' },
       priceScaleId: '', // set as an overlay by setting a blank priceScaleId

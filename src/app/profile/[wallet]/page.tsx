@@ -9,7 +9,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { TokenCardCompact } from '@/components/token/TokenCardCompact';
 import { FollowButton } from '@/components/social/FollowButton';
 import { EditProfileModal } from '@/components/social/EditProfileModal';
-import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, Time, LineSeries } from 'lightweight-charts';
 import {
   useProfile,
   useProfileTokens,
@@ -288,14 +288,17 @@ function StatsTab({ wallet }: { wallet: string }) {
 
     chartRef.current = chart;
 
-    const lineSeries = chart.addLineSeries({
+    const lineSeries = chart.addSeries(LineSeries, {
       color: '#00FF66',
       lineWidth: 2,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
     });
 
-    lineSeries.setData(data);
+    lineSeries.setData(data.map((point) => ({
+      time: point.time as Time,
+      value: point.value,
+    })));
 
     return () => chart.remove();
   }, [data]);
