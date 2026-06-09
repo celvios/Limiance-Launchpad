@@ -56,6 +56,17 @@ export async function chartRoutes(app: FastifyInstance) {
       ? new Date(0)
       : new Date(Date.now() - lookbackMs);
 
+    // Fetch the last trade BEFORE the window to establish the opening price
+    const previousTrade = await prisma.trade.findFirst({
+      where: {
+        tokenMint: mint,
+        timestamp: { lt: since },
+      },
+      orderBy: { timestamp: 'desc' },
+      select: { pricePerToken: true },
+    });
+
+    // Fetch trades inside the time window
     const trades = await prisma.trade.findMany({
       where: {
         tokenMint: mint,
@@ -69,7 +80,7 @@ export async function chartRoutes(app: FastifyInstance) {
       },
     });
 
-    if (trades.length === 0) {
+    if (trades.length === 0 && !previousTrade) {
       return reply.send({ data: [] });
     }
 
@@ -96,17 +107,28 @@ export async function chartRoutes(app: FastifyInstance) {
 
     const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
     
-    // Fill gaps from the first trade up to the current time so the chart always
-    // has a proper X-axis timeline, preventing single-trade tokens from rendering
-    // as a giant full-screen block.
-    const firstBucketTime = sortedBuckets[0].time;
+    // Determine the start time of the chart window
+    const startSec = Math.floor(since.getTime() / 1000);
+    const windowStartBucketTime = Math.floor(startSec / bucketSec) * bucketSec;
+
+    // Use the earliest of: first trade in window, or the window start (if we have a previous price)
+    const firstBucketTime = sortedBuckets.length > 0 
+      ? (previousTrade ? windowStartBucketTime : sortedBuckets[0].time)
+      : windowStartBucketTime;
+
     const nowSec = Math.floor(Date.now() / 1000);
     const currentBucketTime = Math.floor(nowSec / bucketSec) * bucketSec;
     // Cap the last bucket to the current time, or the last trade if it's somehow in the future
-    const lastBucketTime = Math.max(sortedBuckets[sortedBuckets.length - 1].time, currentBucketTime);
+    const lastBucketTime = sortedBuckets.length > 0 
+      ? Math.max(sortedBuckets[sortedBuckets.length - 1].time, currentBucketTime)
+      : currentBucketTime;
 
     const filledBuckets: Bucket[] = [];
-    let previousClose = sortedBuckets[0].open;
+    
+    // Initial price is either the previous trade before window, or the very first trade
+    let previousClose = previousTrade 
+      ? previousTrade.pricePerToken 
+      : (trades.length > 0 ? trades[0].pricePerToken : 0n);
     
     for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
       const bucket = bucketMap.get(time);
