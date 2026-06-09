@@ -88,6 +88,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
         scaleMargins: { top: 0.05, bottom: 0.22 }, // leave bottom 22% for volume only
         textColor: '#6b7280',
         autoScale: true,
+        mode: 2, // 2 = Logarithmic scale (prevents huge outliers from flattening the chart)
       },
       timeScale: {
         borderVisible: false,
