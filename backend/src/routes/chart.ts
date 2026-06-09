@@ -94,12 +94,38 @@ export async function chartRoutes(app: FastifyInstance) {
 
     const formatPrice = (p: bigint) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
 
-    // Only emit buckets that contain real trades — empty bucket filling was causing
-    // the price scale to collapse because hundreds of flat candles at the same price
-    // dominated the Y-axis range, making real candles invisible.
     const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+    
+    // Fill gaps from the first trade up to the current time so the chart always
+    // has a proper X-axis timeline, preventing single-trade tokens from rendering
+    // as a giant full-screen block.
+    const firstBucketTime = sortedBuckets[0].time;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentBucketTime = Math.floor(nowSec / bucketSec) * bucketSec;
+    // Cap the last bucket to the current time, or the last trade if it's somehow in the future
+    const lastBucketTime = Math.max(sortedBuckets[sortedBuckets.length - 1].time, currentBucketTime);
 
-    const data = sortedBuckets.map((b) => ({
+    const filledBuckets: Bucket[] = [];
+    let previousClose = sortedBuckets[0].open;
+    
+    for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
+      const bucket = bucketMap.get(time);
+      if (bucket) {
+        filledBuckets.push(bucket);
+        previousClose = bucket.close;
+      } else {
+        filledBuckets.push({
+          time,
+          open: previousClose,
+          high: previousClose,
+          low: previousClose,
+          close: previousClose,
+          volume: 0n,
+        });
+      }
+    }
+
+    const data = filledBuckets.map((b) => ({
       time: b.time,
       open: formatPrice(b.open),
       high: formatPrice(b.high),
