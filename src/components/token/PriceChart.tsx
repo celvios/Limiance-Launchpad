@@ -85,8 +85,9 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       },
       rightPriceScale: {
         borderVisible: false,
-        scaleMargins: { top: 0.08, bottom: 0.28 },
+        scaleMargins: { top: 0.05, bottom: 0.22 }, // leave bottom 22% for volume only
         textColor: '#6b7280',
+        autoScale: true,
       },
       timeScale: {
         borderVisible: false,
@@ -121,7 +122,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     volumeRef.current = volume;
 
     chart.priceScale('vol').applyOptions({
-      scaleMargins: { top: 0.78, bottom: 0 },
+      scaleMargins: { top: 0.82, bottom: 0 },
     });
 
     // Crosshair listener — update OHLCV tooltip

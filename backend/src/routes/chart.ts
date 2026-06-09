@@ -94,39 +94,20 @@ export async function chartRoutes(app: FastifyInstance) {
 
     const formatPrice = (p: bigint) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
 
+    // Only emit buckets that contain real trades — empty bucket filling was causing
+    // the price scale to collapse because hundreds of flat candles at the same price
+    // dominated the Y-axis range, making real candles invisible.
     const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
-    const firstBucketTime = sortedBuckets[0].time;
-    const lastBucketTime = sortedBuckets[sortedBuckets.length - 1].time;
 
-    const filledBuckets: Bucket[] = [];
-    let previousClose = sortedBuckets[0].open;
-    for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
-      const bucket = bucketMap.get(time);
-      if (bucket) {
-        filledBuckets.push(bucket);
-        previousClose = bucket.close;
-      } else {
-        filledBuckets.push({
-          time,
-          open: previousClose,
-          high: previousClose,
-          low: previousClose,
-          close: previousClose,
-          volume: 0n,
-        });
-      }
-    }
-
-    // Emit OHLC in each bucket. Empty buckets become flat candles so the chart remains continuous.
-    const data = filledBuckets.map((b) => ({
-        time: b.time,
-        open: formatPrice(b.open),
-        high: formatPrice(b.high),
-        low: formatPrice(b.low),
-        close: formatPrice(b.close),
-        value: formatPrice(b.close),
-        volume: Number(b.volume) / 1e18,
-      }));
+    const data = sortedBuckets.map((b) => ({
+      time: b.time,
+      open: formatPrice(b.open),
+      high: formatPrice(b.high),
+      low: formatPrice(b.low),
+      close: formatPrice(b.close),
+      value: formatPrice(b.close),
+      volume: Number(b.volume) / 1e6, // solAmount stored in 6-decimal internal units
+    }));
 
     return reply.send({ data });
   });
