@@ -1,9 +1,18 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, Time, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import {
+  createChart,
+  ColorType,
+  IChartApi,
+  ISeriesApi,
+  Time,
+  CandlestickSeries,
+  HistogramSeries,
+  CrosshairMode,
+} from 'lightweight-charts';
 import { useChartData } from '@/hooks/useTokenDetail';
-import type { ChartTimeRange, ChartDataPoint } from '@/lib/types';
+import type { ChartTimeRange } from '@/lib/types';
 
 interface PriceChartProps {
   mint: string;
@@ -17,265 +26,271 @@ const TIME_RANGES: { id: ChartTimeRange; label: string }[] = [
   { id: 'ALL', label: 'ALL' },
 ];
 
+function formatPrice(p: number): string {
+  if (!p) return '—';
+  if (p < 0.000001) return p.toExponential(4);
+  if (p < 0.0001)   return p.toFixed(8);
+  if (p < 0.01)     return p.toFixed(6);
+  if (p < 1)        return p.toFixed(4);
+  return p.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function formatVolume(v: number): string {
+  if (!v) return '0';
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `${(v / 1_000).toFixed(2)}K`;
+  return v.toFixed(2);
+}
+
 export function PriceChart({ mint, currentPrice }: PriceChartProps) {
   const [range, setRange] = useState<ChartTimeRange>('1D');
   const { data, isLoading } = useChartData(mint, range);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const chartRef          = useRef<IChartApi | null>(null);
+  const candleRef         = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumeRef         = useRef<ISeriesApi<'Histogram'> | null>(null);
 
-  // Derive the display data safely
+  // OHLCV tooltip state — updated on crosshair move
+  const [tooltip, setTooltip] = useState<{
+    open: number; high: number; low: number; close: number; volume: number; isUp: boolean;
+  } | null>(null);
+
   const formattedData = useMemo(() => {
     if (!data || data.length === 0) return [];
-    
-    // lightweight-charts expects time in seconds as a number, or YYYY-MM-DD strings
-    // the backend returns unix timestamp in seconds for `time`
-    return data.map((d) => ({
-      time: d.time as Time,
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      value: d.volume || 0, // value is used for histogram volume
-    })).sort((a, b) => (a.time as number) - (b.time as number));
+    const seen = new Set<number>();
+    return data
+      .filter((d) => {
+        if (seen.has(d.time as number)) return false;
+        seen.add(d.time as number);
+        return true;
+      })
+      .sort((a, b) => (a.time as number) - (b.time as number));
   }, [data]);
 
+  // Build chart once
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#666666',
+        textColor: '#6b7280',
         fontFamily: '"IBM Plex Mono", monospace',
+        fontSize: 11,
       },
       grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        vertLines: { color: 'rgba(255,255,255,0.04)' },
+        horzLines: { color: 'rgba(255,255,255,0.04)' },
       },
       rightPriceScale: {
         borderVisible: false,
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.3, // Leave space for volume
-        },
+        scaleMargins: { top: 0.08, bottom: 0.28 },
+        textColor: '#6b7280',
       },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
       crosshair: {
-        mode: 1, // Normal mode
-        vertLine: {
-          color: '#444444',
-          width: 1,
-          style: 3,
-          labelBackgroundColor: '#181818',
-        },
-        horzLine: {
-          color: '#444444',
-          width: 1,
-          style: 3,
-          labelBackgroundColor: '#181818',
-        },
+        mode: CrosshairMode.Normal,
+        vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
+        horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
       },
       autoSize: true,
     });
 
     chartRef.current = chart;
 
-    // Add Candlestick Series
-    const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#00FF66',
-      downColor: '#FF2D55',
+    const candle = chart.addSeries(CandlestickSeries, {
+      upColor:       '#22c55e',
+      downColor:     '#ef4444',
       borderVisible: false,
-      wickUpColor: '#00FF66',
-      wickDownColor: '#FF2D55',
+      wickUpColor:   '#22c55e',
+      wickDownColor: '#ef4444',
     });
-    candlestickSeriesRef.current = candlestickSeries;
+    candleRef.current = candle;
 
-    // Add Volume Series (Histogram)
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
-      priceFormat: { type: 'volume' },
-      priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+    const volume = chart.addSeries(HistogramSeries, {
+      priceFormat:  { type: 'volume' },
+      priceScaleId: 'vol',
     });
-    volumeSeriesRef.current = volumeSeries;
+    volumeRef.current = volume;
 
-    // Configure overlay price scale for volume
-    chart.priceScale('').applyOptions({
-      scaleMargins: {
-        top: 0.75, // Volume takes bottom 25%
-        bottom: 0,
-      },
+    chart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.78, bottom: 0 },
+    });
+
+    // Crosshair listener — update OHLCV tooltip
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData) {
+        setTooltip(null);
+        return;
+      }
+      const c = param.seriesData.get(candle) as any;
+      const v = param.seriesData.get(volume) as any;
+      if (c) {
+        setTooltip({
+          open:   c.open,
+          high:   c.high,
+          low:    c.low,
+          close:  c.close,
+          volume: v?.value ?? 0,
+          isUp:   c.close >= c.open,
+        });
+      }
     });
 
     return () => {
       chart.remove();
-      chartRef.current = null;
+      chartRef.current   = null;
+      candleRef.current  = null;
+      volumeRef.current  = null;
     };
-  }, []); // Run once on mount
+  }, []);
 
+  // Push data whenever it changes
   useEffect(() => {
-    // Update data when it changes
-    if (candlestickSeriesRef.current && volumeSeriesRef.current && formattedData.length > 0) {
-      
-      // Filter out duplicate times and ensure strictly ascending order
-      const uniqueData = [];
-      let lastTime = 0;
-      for (const item of formattedData) {
-        if ((item.time as number) > lastTime) {
-          uniqueData.push(item);
-          lastTime = item.time as number;
-        }
-      }
+    if (!candleRef.current || !volumeRef.current) return;
 
-      candlestickSeriesRef.current.setData(uniqueData);
-      
-      const volumeData = uniqueData.map(d => ({
-        time: d.time,
-        value: d.value,
-        color: d.close >= d.open ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 45, 85, 0.4)',
-      }));
-      
-      volumeSeriesRef.current.setData(volumeData);
-      
-      chartRef.current?.timeScale().fitContent();
-    } else if (candlestickSeriesRef.current && volumeSeriesRef.current) {
-        candlestickSeriesRef.current.setData([]);
-        volumeSeriesRef.current.setData([]);
+    if (formattedData.length === 0) {
+      candleRef.current.setData([]);
+      volumeRef.current.setData([]);
+      return;
     }
+
+    candleRef.current.setData(
+      formattedData.map((d) => ({
+        time:  d.time as Time,
+        open:  d.open,
+        high:  d.high,
+        low:   d.low,
+        close: d.close,
+      }))
+    );
+
+    volumeRef.current.setData(
+      formattedData.map((d) => ({
+        time:  d.time as Time,
+        value: d.volume ?? 0,
+        color: d.close >= d.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+      }))
+    );
+
+    chartRef.current?.timeScale().fitContent();
+
+    // Seed tooltip with last candle
+    const last = formattedData[formattedData.length - 1];
+    setTooltip({
+      open:   last.open,
+      high:   last.high,
+      low:    last.low,
+      close:  last.close,
+      volume: last.volume ?? 0,
+      isUp:   last.close >= last.open,
+    });
   }, [formattedData]);
 
-  // Format main price display
-  let displayPrice = currentPrice.toFixed(4);
-  if (currentPrice < 0.0001) displayPrice = currentPrice.toFixed(8);
-  else if (currentPrice < 0.01) displayPrice = currentPrice.toFixed(6);
+  const priceColor = tooltip
+    ? (tooltip.isUp ? '#22c55e' : '#ef4444')
+    : currentPrice >= 0 ? '#22c55e' : '#ef4444';
 
   return (
     <div
       style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-4)',
+        background: '#0d0d14',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: '12px',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        minHeight: '400px',
+        minHeight: '420px',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--space-4)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)' }}>
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '24px',
-              color: 'var(--text-primary)',
-            }}
-          >
-            {displayPrice}
-          </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-ui)',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-            }}
-          >
-            USDT
-          </span>
-        </div>
+      {/* ── DexScreener-style header ── */}
+      <div style={{ padding: '12px 16px 8px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        
+        {/* OHLCV row */}
+        {tooltip ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#6b7280' }}>
+              O <span style={{ color: tooltip.isUp ? '#22c55e' : '#ef4444' }}>{formatPrice(tooltip.open)}</span>
+            </span>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#6b7280' }}>
+              H <span style={{ color: '#22c55e' }}>{formatPrice(tooltip.high)}</span>
+            </span>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#6b7280' }}>
+              L <span style={{ color: '#ef4444' }}>{formatPrice(tooltip.low)}</span>
+            </span>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#6b7280' }}>
+              C <span style={{ color: tooltip.isUp ? '#22c55e' : '#ef4444' }}>{formatPrice(tooltip.close)}</span>
+            </span>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#6b7280' }}>
+              Vol <span style={{ color: '#9ca3af' }}>{formatVolume(tooltip.volume)}</span>
+            </span>
+          </div>
+        ) : (
+          <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#4b5563' }}>
+            Hover over chart to see OHLCV
+          </div>
+        )}
 
-        {/* Time Ranges */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 'var(--space-1)',
-            background: 'var(--bg-elevated)',
-            padding: '4px',
-            borderRadius: 'var(--radius-md)',
-          }}
-        >
-          {TIME_RANGES.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setRange(r.id)}
-              style={{
-                border: 'none',
-                background: range === r.id ? 'var(--text-primary)' : 'transparent',
-                color: range === r.id ? 'var(--bg-base)' : 'var(--text-secondary)',
-                padding: 'var(--space-1) var(--space-3)',
-                borderRadius: '4px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
+        {/* Price + time range row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 22, fontWeight: 700, color: '#f9fafb', letterSpacing: '-0.5px' }}>
+              {formatPrice(tooltip?.close ?? currentPrice)}
+            </span>
+            <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 12, color: '#6b7280' }}>
+              USDT
+            </span>
+          </div>
+
+          {/* Time range tabs */}
+          <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: 8 }}>
+            {TIME_RANGES.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setRange(r.id)}
+                style={{
+                  border: 'none',
+                  background: range === r.id ? 'rgba(255,255,255,0.12)' : 'transparent',
+                  color: range === r.id ? '#f9fafb' : '#6b7280',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Chart Container */}
+      {/* ── Chart area ── */}
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        {/* Loading spinner */}
         {isLoading && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.4)',
-              zIndex: 10,
-              backdropFilter: 'blur(2px)',
-            }}
-          >
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                border: '2px solid var(--border)',
-                borderTopColor: 'var(--brand)',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-              }}
-            />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13,13,20,0.7)', zIndex: 10, backdropFilter: 'blur(2px)' }}>
+            <div style={{ width: 24, height: 24, border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#22c55e', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           </div>
         )}
-        
-        {(!data || data.length === 0) && !isLoading && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 5,
-            }}
-          >
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
-              No data
-            </span>
+
+        {/* No data state */}
+        {!isLoading && (!data || data.length === 0) && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 5 }}>
+            <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 13, color: '#4b5563' }}>No trades yet</div>
+            <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#374151' }}>Chart will appear once trading starts</div>
           </div>
         )}
 
