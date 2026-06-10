@@ -22,7 +22,6 @@ export function MobileTopBar() {
       style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
         height: '52px',
         padding: '0 var(--space-4)',
         background: 'var(--bg-base)',
@@ -34,70 +33,86 @@ export function MobileTopBar() {
       }}
     >
       {!isSearchExpanded ? (
-        <>
+        /* Normal mode: hamburger | logo (center) | search */
+        <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
           {/* Left: Hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
             style={{
               width: '40px',
               height: '40px',
+              flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-start',
+              justifyContent: 'center',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
               padding: 0,
+              cursor: 'pointer',
             }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" x2="20" y1="6" y2="6"/>
+              <line x1="4" x2="20" y1="12" y2="12"/>
+              <line x1="4" x2="20" y1="18" y2="18"/>
+            </svg>
           </button>
 
-          {/* Center: Logo */}
+          {/* Center: Logo — takes all remaining space, content centered */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Limiance" style={{ height: '22px', objectFit: 'contain', mixBlendMode: 'lighten' }} />
+            <img
+              src="/logo.png"
+              alt="Limiance"
+              style={{ height: '22px', objectFit: 'contain', mixBlendMode: 'lighten' }}
+            />
           </div>
 
-          {/* Right: Search Toggle */}
+          {/* Right: Search toggle */}
           <button
             onClick={() => setIsSearchExpanded(true)}
             style={{
               width: '40px',
               height: '40px',
+              flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-end',
+              justifyContent: 'center',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
               padding: 0,
+              cursor: 'pointer',
             }}
           >
             <Search size={20} />
           </button>
-        </>
+        </div>
       ) : (
         /* Expanded Search Mode */
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+            <Search
+              size={15}
+              style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', pointerEvents: 'none' }}
+            />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search..."
+              placeholder="Search tokens, creators..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               style={{
                 width: '100%',
                 height: '36px',
                 background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
+                border: '1px solid var(--border-active)',
                 borderRadius: 'var(--radius-md)',
                 color: 'var(--text-primary)',
                 fontFamily: 'var(--font-ui)',
                 fontSize: '14px',
-                padding: '0 var(--space-8) 0 32px',
+                padding: '0 36px 0 32px',
                 outline: 'none',
               }}
             />
@@ -115,6 +130,7 @@ export function MobileTopBar() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  cursor: 'pointer',
                 }}
               >
                 <X size={14} />
@@ -129,11 +145,13 @@ export function MobileTopBar() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--text-primary)',
+              color: 'var(--brand)',
               fontFamily: 'var(--font-ui)',
               fontSize: '14px',
-              fontWeight: 500,
+              fontWeight: 600,
               padding: '0 4px',
+              cursor: 'pointer',
+              flexShrink: 0,
             }}
           >
             Cancel
