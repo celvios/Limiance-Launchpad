@@ -45,54 +45,33 @@ export function MenuDrawer() {
 
           {/* Drawer Sheet */}
           <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
             transition={{ type: 'tween', ease: [0.16, 1, 0.3, 1], duration: 0.38 }}
-            drag="y"
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.6 }}
+            drag="x"
+            dragConstraints={{ left: -100, right: 0 }}
+            dragElastic={{ left: 0.6, right: 0 }}
             onDragEnd={(e, info) => {
-              if (info.offset.y > 80) {
+              if (info.offset.x < -80) {
                 setMobileMenuOpen(false);
               }
             }}
             style={{
               position: 'fixed',
+              top: 0,
               bottom: 0,
               left: 0,
-              right: 0,
-              height: '85dvh',
+              width: '85vw',
+              maxWidth: '320px',
               background: 'var(--bg-card)',
-              borderRadius: '20px 20px 0 0',
               zIndex: 61,
               display: 'flex',
               flexDirection: 'column',
               paddingBottom: 'env(safe-area-inset-bottom)',
-              // The padding for the bottom nav bar is slightly larger to ensure content doesn't get hidden behind it
-              // Actually, bottom nav height is 64px, so we just add padding to the bottom of the drawer content.
             }}
             className="menu-drawer"
           >
-            {/* Drag Handle */}
-            <div
-              style={{
-                width: '100%',
-                display: 'flex',
-                justifyContent: 'center',
-                padding: '12px 0 8px 0',
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: '40px',
-                  height: '4px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--border-active)',
-                }}
-              />
-            </div>
 
             {/* Scrollable Content Workspace */}
             <div
@@ -101,7 +80,6 @@ export function MenuDrawer() {
                 overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
-                paddingBottom: '64px', // Space for when bottom nav is visible (though drawer covers it)
               }}
               className="hide-scrollbar"
             >

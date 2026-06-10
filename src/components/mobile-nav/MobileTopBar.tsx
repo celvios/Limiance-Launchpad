@@ -39,18 +39,46 @@ export function MobileTopBar() {
     >
       <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
         
-        {/* Logo Section */}
+        {/* Left Actions - Hamburger */}
         <div 
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 'var(--space-2)',
-            transition: 'opacity 200ms, transform 200ms',
-            opacity: isSearchExpanded ? 0 : 1,
-            transform: isSearchExpanded ? 'translateX(-20px)' : 'translateX(0)',
-            pointerEvents: isSearchExpanded ? 'none' : 'auto',
             position: 'absolute',
             left: 0,
+            transition: 'opacity 200ms',
+            opacity: isSearchExpanded ? 0 : 1,
+            pointerEvents: isSearchExpanded ? 'none' : 'auto',
+          }}
+        >
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            style={{
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* Center Logo */}
+        <div 
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            transition: 'opacity 200ms',
+            opacity: isSearchExpanded ? 0 : 1,
+            pointerEvents: isSearchExpanded ? 'none' : 'auto',
           }}
         >
           <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>

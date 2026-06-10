@@ -4,6 +4,7 @@ import React from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useConnection } from '@/providers/BscWalletProvider';
 import { useQuery } from '@tanstack/react-query';
+import { useProfileTokens, useProfileHoldings, useProfileNetworth } from '@/hooks/useProfile';
 
 export function MenuWalletCard() {
   const { address } = useWallet();
@@ -20,11 +21,14 @@ export function MenuWalletCard() {
     refetchInterval: 15000,
   });
 
-  // Since we don't have a real backend to fetch these for now, we'll use mocked data that looks exactly like the design.
-  const portfolioValue = balance ? balance * 2.4 : 0; // Mock multiplier
-  const mockTokensHeld = 8;
-  const mockCreated = 3;
-  const mockGraduated = 1;
+  const { data: networth } = useProfileNetworth(address || '');
+  const { data: tokens } = useProfileTokens(address || '');
+  const { data: holdings } = useProfileHoldings(address || '');
+
+  const portfolioValue = networth?.totalUsdt || 0;
+  const realTokensHeld = holdings?.length || 0;
+  const realCreated = tokens?.length || 0;
+  const realGraduated = tokens?.filter((t: any) => t.isGraduated).length || 0;
 
   if (!address) return null;
 
@@ -67,7 +71,7 @@ export function MenuWalletCard() {
             Tokens Held
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>
-            {mockTokensHeld}
+            {realTokensHeld}
           </div>
         </div>
         
@@ -76,7 +80,7 @@ export function MenuWalletCard() {
             Created
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>
-            {mockCreated}
+            {realCreated}
           </div>
         </div>
 
@@ -84,8 +88,8 @@ export function MenuWalletCard() {
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
             Graduated
           </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: mockGraduated > 0 ? 'var(--graduation)' : 'var(--text-muted)', fontWeight: 600 }}>
-            {mockGraduated}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: realGraduated > 0 ? 'var(--graduation)' : 'var(--text-muted)', fontWeight: 600 }}>
+            {realGraduated}
           </div>
         </div>
       </div>
