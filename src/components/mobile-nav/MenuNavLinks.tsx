@@ -3,19 +3,22 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Heart, User, Zap, GraduationCap, ExternalLink, Power, ChevronRight, LogIn } from 'lucide-react';
+import { Home, Compass, Heart, User, Zap, GraduationCap, Power, ChevronRight, LogIn } from 'lucide-react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
 import { useUIStore } from '@/store/uiStore';
 import { usePrivy } from '@privy-io/react-auth';
+import { useProfile } from '@/hooks/useProfile';
 
 export function MenuNavLinks() {
   const pathname = usePathname();
   const { connected, address, disconnect } = useWallet();
-  const { logout: privyLogout } = usePrivy();
+  const { logout: privyLogout, user } = usePrivy();
   const watchlistCount = useWatchlistStore((s) => s.count());
   const { setMobileMenuOpen } = useUIStore();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+
+  const { data: profile } = useProfile(address || '');
 
   const handleNavigate = () => {
     setTimeout(() => {
@@ -23,11 +26,32 @@ export function MenuNavLinks() {
     }, 200);
   };
 
+  // Get the email if logged in via email
+  const emailAddress = user?.email?.address ?? user?.google?.email ?? null;
+
+  // Derive display identifier
+  const displayIdentifier = emailAddress
+    ? emailAddress
+    : address
+    ? `${address.slice(0, 6)}...${address.slice(-4)}`
+    : '';
+
+  // Capitalize name
+  const displayName = profile?.username
+    ? profile.username.charAt(0).toUpperCase() + profile.username.slice(1)
+    : displayIdentifier;
+
+  const avatarUri = profile?.profilePicUri;
+  const resolvedAvatar = avatarUri
+    ? avatarUri.startsWith('ipfs://')
+      ? `https://gateway.pinata.cloud/ipfs/${avatarUri.replace('ipfs://', '')}`
+      : avatarUri
+    : null;
+
   const navItems = [
     { label: 'Feed', href: '/', icon: Home },
     { label: 'Explore', href: '/explore', icon: Compass },
     { label: 'Watchlist', href: '/profile#watchlist', icon: Heart, badge: watchlistCount },
-    { label: 'Profile', href: connected && address ? `/profile/${address}` : '/profile', icon: User },
     { label: 'Near Graduation', href: '/explore?filter=near-grad', icon: Zap, iconColor: 'var(--graduation)' },
     { label: 'Graduated', href: '/explore?filter=graduated', icon: GraduationCap },
   ];
@@ -102,7 +126,7 @@ export function MenuNavLinks() {
         })}
       </div>
 
-      {/* Bottom Actions — Wallet */}
+      {/* Bottom Actions — Wallet / Profile */}
       <div style={{ marginTop: 'var(--space-6)', display: 'flex', flexDirection: 'column' }}>
 
         {!connected ? (
@@ -142,36 +166,116 @@ export function MenuNavLinks() {
             </button>
           </div>
         ) : (
-          /* Connected — View Profile + Disconnect */
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <a
+          /* Connected — Rich Profile Card */
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+
+            {/* Profile Card */}
+            <Link
               href={`/profile/${address}`}
               onClick={handleNavigate}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                height: '52px',
+                gap: 'var(--space-3)',
                 textDecoration: 'none',
-                borderTop: '1px solid var(--border)',
+                padding: 'var(--space-3)',
+                background: 'var(--bg-elevated)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border)',
+                transition: 'border-color 150ms, background 150ms',
+              }}
+              onPointerDown={(e) => {
+                e.currentTarget.style.background = 'var(--bg-card)';
+                e.currentTarget.style.borderColor = 'var(--brand)';
+              }}
+              onPointerUp={(e) => {
+                e.currentTarget.style.background = 'var(--bg-elevated)';
+                e.currentTarget.style.borderColor = 'var(--border)';
+              }}
+              onPointerLeave={(e) => {
+                e.currentTarget.style.background = 'var(--bg-elevated)';
+                e.currentTarget.style.borderColor = 'var(--border)';
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                <User size={20} color="var(--text-secondary)" />
-                <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)' }}>
-                  View Profile
-                </span>
+              {/* Avatar */}
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  background: resolvedAvatar ? 'transparent' : 'var(--brand)',
+                  border: '2px solid var(--buy)',
+                  boxShadow: '0 0 8px rgba(0,255,102,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '16px',
+                  color: '#fff',
+                }}
+              >
+                {resolvedAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={resolvedAvatar} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  (profile?.username ?? address ?? 'U').slice(0, 1).toUpperCase()
+                )}
               </div>
-              <ChevronRight size={16} color="var(--text-muted)" />
-            </a>
 
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    color: '#FFFFFF',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {displayName}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {displayIdentifier}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-ui)',
+                      fontWeight: 600,
+                      color: 'var(--buy)',
+                      background: 'rgba(0,255,102,0.1)',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Connected
+                  </span>
+                </div>
+              </div>
+
+              <ChevronRight size={16} color="var(--text-muted)" />
+            </Link>
+
+            {/* Disconnect */}
             <div
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                height: showDisconnectConfirm ? '88px' : '52px',
-                borderTop: '1px solid var(--border)',
+                height: showDisconnectConfirm ? '80px' : '44px',
                 transition: 'height 200ms',
                 overflow: 'hidden',
               }}
@@ -182,23 +286,25 @@ export function MenuNavLinks() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 'var(--space-3)',
+                    justifyContent: 'center',
+                    gap: 'var(--space-2)',
                     background: 'transparent',
-                    border: 'none',
-                    padding: 0,
+                    border: '1px solid var(--sell)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0 var(--space-4)',
                     cursor: 'pointer',
-                    height: '52px',
+                    height: '44px',
                     width: '100%',
                   }}
                 >
-                  <Power size={20} color="var(--sell)" />
-                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--sell)' }}>
-                    Disconnect Wallet
+                  <Power size={16} color="var(--sell)" />
+                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--sell)', fontWeight: 500 }}>
+                    Logout
                   </span>
                 </button>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-primary)' }}>
+                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-primary)' }}>
                     Are you sure you want to disconnect?
                   </span>
                   <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
@@ -249,12 +355,14 @@ export function MenuNavLinks() {
                 </div>
               )}
             </div>
+
           </div>
         )}
       </div>
     </div>
   );
 }
+
 
 
 
