@@ -116,7 +116,7 @@ export default function ProfilePage() {
         {/* Header Display */}
         <div style={{ marginBottom: 'var(--space-3)' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '0px' }}>
-            {profile.username ? profile.username : formatAddress(wallet)}
+            {profile.username ? profile.username.charAt(0).toUpperCase() + profile.username.slice(1) : formatAddress(wallet)}
           </div>
           
           {/* Handle / Joined */}
@@ -133,10 +133,10 @@ export default function ProfilePage() {
         {/* Stats Row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: 'var(--space-4)' }}>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followingCount)}</span> Following
+            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followingCount, 0)}</span> Following
           </div>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followerCount)}</span> Followers
+            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followerCount, 0)}</span> Followers
           </div>
         </div>
 
