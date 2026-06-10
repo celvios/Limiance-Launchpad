@@ -33,20 +33,9 @@ export function MobileTopBar() {
         flexShrink: 0,
       }}
     >
-      <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
-        
-        {/* Left Actions - Hamburger */}
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            position: 'absolute',
-            left: 0,
-            transition: 'opacity 200ms',
-            opacity: isSearchExpanded ? 0 : 1,
-            pointerEvents: isSearchExpanded ? 'none' : 'auto',
-          }}
-        >
+      {!isSearchExpanded ? (
+        <>
+          {/* Left: Hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
             style={{
@@ -54,34 +43,44 @@ export function MobileTopBar() {
               height: '40px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'flex-start',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
+              padding: 0,
             }}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
           </button>
-        </div>
 
+          {/* Center: Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+            <img src="/logo.png" alt="Limiance" style={{ height: '24px', objectFit: 'contain', mixBlendMode: 'lighten' }} />
+          </div>
 
-
-        {/* Search Input Section */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            display: 'flex',
-            alignItems: 'center',
-            transition: 'opacity 300ms var(--ease-default), transform 300ms var(--ease-default)',
-            opacity: isSearchExpanded ? 1 : 0,
-            transform: isSearchExpanded ? 'translateX(0)' : 'translateX(20px)',
-            pointerEvents: isSearchExpanded ? 'auto' : 'none',
-            zIndex: 2,
-          }}
-        >
-          <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
+          {/* Right: Search Toggle */}
+          <button
+            onClick={() => setIsSearchExpanded(true)}
+            style={{
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              padding: 0,
+            }}
+          >
+            <Search size={20} />
+          </button>
+        </>
+      ) : (
+        /* Expanded Search Mode */
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+            <Search size={16} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
             <input
               ref={searchInputRef}
               type="text"
@@ -97,65 +96,49 @@ export function MobileTopBar() {
                 color: 'var(--text-primary)',
                 fontFamily: 'var(--font-ui)',
                 fontSize: '14px',
-                padding: '0 var(--space-8) 0 var(--space-3)',
+                padding: '0 var(--space-8) 0 32px',
                 outline: 'none',
               }}
             />
-            <button
-              onClick={() => {
-                setIsSearchExpanded(false);
-                setSearchValue('');
-              }}
-              style={{
-                position: 'absolute',
-                right: '4px',
-                width: '32px',
-                height: '32px',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <X size={16} />
-            </button>
+            {searchValue && (
+              <button
+                onClick={() => setSearchValue('')}
+                style={{
+                  position: 'absolute',
+                  right: '4px',
+                  width: '28px',
+                  height: '28px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
-        </div>
-
-        {/* Right Actions */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)',
-            position: 'absolute',
-            right: 0,
-            transition: 'opacity 200ms',
-            opacity: isSearchExpanded ? 0 : 1,
-            pointerEvents: isSearchExpanded ? 'none' : 'auto',
-          }}
-        >
           <button
-            onClick={() => setIsSearchExpanded(true)}
+            onClick={() => {
+              setIsSearchExpanded(false);
+              setSearchValue('');
+            }}
             style={{
-              width: '40px',
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
+              fontFamily: 'var(--font-ui)',
+              fontSize: '14px',
+              fontWeight: 500,
+              padding: '0 4px',
             }}
           >
-            <Search size={20} />
+            Cancel
           </button>
-
         </div>
-
-      </div>
+      )}
     </header>
   );
 }

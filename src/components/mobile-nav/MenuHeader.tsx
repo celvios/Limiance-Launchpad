@@ -88,7 +88,7 @@ export function MenuHeader() {
           {avatarUri ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={avatarUri}
+              src={avatarUri.startsWith('ipfs://') ? `https://gateway.pinata.cloud/ipfs/${avatarUri.replace('ipfs://', '')}` : avatarUri}
               alt="Profile"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
