@@ -11,6 +11,8 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
 import { formatAddress } from '@/lib/format';
 import { useQuery } from '@tanstack/react-query';
+import { usePrivy } from '@privy-io/react-auth';
+import { Power } from 'lucide-react';
 
 interface NavItem {
   icon: React.ReactNode;
@@ -21,8 +23,9 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { address, connected, isAuthenticated } = useWallet();
+  const { address, connected, isAuthenticated, disconnect } = useWallet();
   const { connection } = useConnection();
+  const { user, logout: privyLogout } = usePrivy();
 
   const { data: balance } = useQuery({
     queryKey: ['bnb-balance', address],
@@ -188,18 +191,42 @@ export function Sidebar() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {formatAddress(address)}
+                  {user?.email?.address ? user.email.address : formatAddress(address)}
                 </div>
                 <div
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: '12px',
-                    color: 'var(--text-muted)',
+                    color: 'var(--buy)',
                   }}
                 >
-                  {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
+                  Connected
                 </div>
               </div>
+              
+              <button
+                onClick={async () => {
+                  disconnect();
+                  try {
+                    await privyLogout();
+                  } catch (err) {
+                    console.error('Privy logout failed', err);
+                  }
+                }}
+                title="Disconnect"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 'var(--space-2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Power size={18} />
+              </button>
             </div>
           ) : (
             <ConnectButton />

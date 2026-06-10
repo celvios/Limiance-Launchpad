@@ -22,17 +22,16 @@ import { useUIStore } from '@/store/uiStore';
 import { formatAddress, formatNumber } from '@/lib/format';
 import type { ProfileTab } from '@/lib/types';
 
-// The new tabs
 const PROFILE_TABS = [
-  { id: 'posts', label: 'Posts' },
-  { id: 'replies', label: 'Replies' },
+  { id: 'created', label: 'Created' },
+  { id: 'holdings', label: 'Holdings' },
   { id: 'stats', label: 'Stats' },
 ];
 
 export default function ProfilePage() {
   const params = useParams();
   const wallet = params.wallet as string;
-  const [activeTab, setActiveTab] = useState<ProfileTab | 'posts' | 'replies' | 'stats'>('posts');
+  const [activeTab, setActiveTab] = useState<ProfileTab | 'created' | 'holdings' | 'stats'>('created');
   const { address } = useWallet();
   const { openModal } = useUIStore();
 
@@ -114,33 +113,30 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Net Worth Display */}
+        {/* Header Display */}
         <div style={{ marginBottom: 'var(--space-3)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '42px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-1px' }}>
-            $1253.2K
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '0px' }}>
+            {profile.username ? profile.username : formatAddress(wallet)}
           </div>
           
           {/* Handle / Joined */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)', fontWeight: 600 }}>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--brand)', fontWeight: 600 }}>
               {profile.username ? `@${profile.username}` : formatAddress(wallet)}
             </span>
             <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-muted)' }}>
-              - {daysJoined}d
+              - Joined {daysJoined === 0 ? 'today' : `${daysJoined}d ago`}
             </span>
           </div>
         </div>
 
         {/* Stats Row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: 'var(--space-4)' }}>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatNumber(profile.followingCount)}</span> Following
+            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followingCount)}</span> Following
           </div>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatNumber(profile.followerCount)}</span> Followers
-          </div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>$550K</span> TFV
+            <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{formatNumber(profile.followerCount)}</span> Followers
           </div>
         </div>
 
@@ -182,8 +178,8 @@ export default function ProfilePage() {
 
         {/* Tab Content */}
         <div>
-          {activeTab === 'posts' && <CreatedTab wallet={wallet} />}
-          {activeTab === 'replies' && <CommentsTab wallet={wallet} />}
+          {activeTab === 'created' && <CreatedTab wallet={wallet} />}
+          {activeTab === 'holdings' && <HoldingsTab wallet={wallet} />}
           {activeTab === 'stats' && <StatsTab wallet={wallet} />}
         </div>
       </div>
@@ -243,25 +239,35 @@ function CreatedTab({ wallet }: { wallet: string }) {
   );
 }
 
-function CommentsTab({ wallet }: { wallet: string }) {
-  const { data, isLoading } = useProfileComments(wallet);
+function HoldingsTab({ wallet }: { wallet: string }) {
+  const { data, isLoading } = useProfileHoldings(wallet);
 
   if (isLoading) return <TabSkeleton />;
 
-  const comments = data?.comments ?? [];
-  if (comments.length === 0) {
-    return <EmptyTab message="No replies yet." />;
+  const holdings = data?.holdings ?? [];
+  if (holdings.length === 0) {
+    return <EmptyTab message="No holdings yet." />;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      {comments.map((c) => (
-        <div key={c.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)' }}>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            Replying to <Link href={`/token/${c.tokenMint}`} style={{ color: 'var(--brand)', textDecoration: 'none' }}>${c.tokenSymbol}</Link>
+      {holdings.map((h) => (
+        <div key={h.mint} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>
+              ${h.symbol}
+            </div>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-muted)' }}>
+              {formatNumber(h.amount)} tokens
+            </div>
           </div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-            {c.text}
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', color: 'var(--buy)', fontWeight: 600 }}>
+              ${h.value.toFixed(2)}
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: h.pnlPercent >= 0 ? 'var(--buy)' : 'var(--sell)' }}>
+              {h.pnlPercent >= 0 ? '+' : ''}{h.pnlPercent.toFixed(1)}%
+            </div>
           </div>
         </div>
       ))}
