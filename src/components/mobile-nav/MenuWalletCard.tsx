@@ -25,8 +25,8 @@ export function MenuWalletCard() {
   const { data: tokens } = useProfileTokens(address || '');
   const { data: holdings } = useProfileHoldings(address || '');
 
-  const portfolioValue = networth?.totalUsdt || 0;
-  const realTokensHeld = holdings?.length || 0;
+  const portfolioValue = networth && networth.length > 0 ? networth[networth.length - 1].value : 0;
+  const realTokensHeld = holdings?.holdings?.length || 0;
   const realCreated = tokens?.length || 0;
   const realGraduated = tokens?.filter((t: any) => t.isGraduated).length || 0;
 
