@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Heart, User, Zap, GraduationCap, Settings, ExternalLink, Power, ChevronRight } from 'lucide-react';
+import { Home, Compass, Heart, User, Zap, GraduationCap, ExternalLink, Power, ChevronRight, LogIn } from 'lucide-react';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
 import { useUIStore } from '@/store/uiStore';
@@ -102,134 +102,153 @@ export function MenuNavLinks() {
         })}
       </div>
 
-      {/* Bottom Actions */}
+      {/* Bottom Actions — Wallet */}
       <div style={{ marginTop: 'var(--space-6)', display: 'flex', flexDirection: 'column' }}>
-        <button
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: '52px',
-            background: 'transparent',
-            border: 'none',
-            borderTop: '1px solid var(--border)',
-            padding: 0,
-            cursor: 'pointer',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <Settings size={20} color="var(--text-secondary)" />
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)' }}>
-              Settings
-            </span>
-          </div>
-          <ChevronRight size={16} color="var(--text-muted)" />
-        </button>
 
-        <a
-          href="https://afriq.example.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: '52px',
-            textDecoration: 'none',
-            borderTop: '1px solid var(--border)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <ExternalLink size={20} color="var(--text-secondary)" />
-            <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-secondary)' }}>
-              Afriq Exchange
-            </span>
+        {!connected ? (
+          /* Not connected — show Connect Wallet CTA */
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-ui)',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                marginBottom: 'var(--space-3)',
+              }}
+            >
+              Connect your wallet to access all features
+            </div>
+            <button
+              onClick={handleNavigate}
+              style={{
+                width: '100%',
+                height: '44px',
+                background: 'var(--brand)',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                color: '#FFFFFF',
+                fontFamily: 'var(--font-ui)',
+                fontSize: '14px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 'var(--space-2)',
+                cursor: 'pointer',
+              }}
+            >
+              <LogIn size={16} />
+              Connect Wallet
+            </button>
           </div>
-          <ExternalLink size={16} color="var(--text-muted)" />
-        </a>
-
-        {connected && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              height: showDisconnectConfirm ? '88px' : '52px',
-              borderTop: '1px solid var(--border)',
-              transition: 'height 200ms',
-              overflow: 'hidden',
-            }}
-          >
-            {!showDisconnectConfirm ? (
-              <button
-                onClick={() => setShowDisconnectConfirm(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  height: '52px',
-                  width: '100%',
-                }}
-              >
-                <Power size={20} color="var(--sell)" />
-                <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--sell)' }}>
-                  Disconnect Wallet
+        ) : (
+          /* Connected — View Profile + Disconnect */
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <a
+              href={`/profile/${address}`}
+              onClick={handleNavigate}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                height: '52px',
+                textDecoration: 'none',
+                borderTop: '1px solid var(--border)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <User size={20} color="var(--text-secondary)" />
+                <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)' }}>
+                  View Profile
                 </span>
-              </button>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-primary)' }}>
-                  Are you sure you want to disconnect?
-                </span>
-                <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                  <button
-                    onClick={() => setShowDisconnectConfirm(false)}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      background: 'var(--bg-elevated)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: 'var(--text-primary)',
-                      fontFamily: 'var(--font-ui)',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={async () => {
-                      disconnect();
-                      try {
-                        await privyLogout();
-                      } catch (err) {
-                        console.error('Privy logout failed:', err);
-                      }
-                      setShowDisconnectConfirm(false);
-                      handleNavigate();
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      background: 'var(--sell)',
-                      border: '1px solid var(--sell)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: '#FFFFFF',
-                      fontFamily: 'var(--font-ui)',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Disconnect
-                  </button>
-                </div>
               </div>
-            )}
+              <ChevronRight size={16} color="var(--text-muted)" />
+            </a>
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                height: showDisconnectConfirm ? '88px' : '52px',
+                borderTop: '1px solid var(--border)',
+                transition: 'height 200ms',
+                overflow: 'hidden',
+              }}
+            >
+              {!showDisconnectConfirm ? (
+                <button
+                  onClick={() => setShowDisconnectConfirm(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    height: '52px',
+                    width: '100%',
+                  }}
+                >
+                  <Power size={20} color="var(--sell)" />
+                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--sell)' }}>
+                    Disconnect Wallet
+                  </span>
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  <span style={{ fontFamily: 'var(--font-ui)', fontSize: '14px', color: 'var(--text-primary)' }}>
+                    Are you sure you want to disconnect?
+                  </span>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                    <button
+                      onClick={() => setShowDisconnectConfirm(false)}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'var(--font-ui)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        disconnect();
+                        try {
+                          await privyLogout();
+                        } catch (err) {
+                          console.error('Privy logout failed:', err);
+                        }
+                        setShowDisconnectConfirm(false);
+                        handleNavigate();
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        background: 'var(--sell)',
+                        border: '1px solid var(--sell)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: '#FFFFFF',
+                        fontFamily: 'var(--font-ui)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

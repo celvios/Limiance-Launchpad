@@ -84,6 +84,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Overlays */}
       <WalletDrawer />
       <ToastContainer />
+      <BottomNav />
       <MenuDrawer />
       <CommentModal />
       <MobileLivePulse />

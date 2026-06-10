@@ -1,18 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
 import { Search, X } from 'lucide-react';
-import { useWallet } from '@/providers/BscWalletProvider';
 import { useUIStore } from '@/store/uiStore';
-import { LimianceLogo } from '@/components/ui/LimianceLogo';
 
 export function MobileTopBar() {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { setMobileMenuOpen } = useUIStore();
-  const { connected } = useWallet();
 
   // Focus input when search expands
   useEffect(() => {
@@ -68,23 +64,7 @@ export function MobileTopBar() {
           </button>
         </div>
 
-        {/* Center Logo */}
-        <div 
-          style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            display: 'flex',
-            alignItems: 'center',
-            transition: 'opacity 200ms',
-            opacity: isSearchExpanded ? 0 : 1,
-            pointerEvents: isSearchExpanded ? 'none' : 'auto',
-          }}
-        >
-          <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-            <LimianceLogo size={24} />
-          </Link>
-        </div>
+
 
         {/* Search Input Section */}
         <div
@@ -172,39 +152,7 @@ export function MobileTopBar() {
           >
             <Search size={20} />
           </button>
-          
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            style={{
-              width: '40px',
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'transparent',
-              border: 'none',
-            }}
-          >
-            <div
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                background: connected ? 'var(--brand-dim)' : 'var(--bg-elevated)',
-                border: `1px solid ${connected ? 'var(--brand-border)' : 'var(--border)'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                transition: 'transform 150ms',
-              }}
-              onPointerDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
-              onPointerUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-              onPointerLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-            >
-              {connected ? '🟢' : '👤'}
-            </div>
-          </button>
+
         </div>
 
       </div>

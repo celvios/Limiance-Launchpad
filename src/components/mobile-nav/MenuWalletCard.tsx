@@ -2,30 +2,16 @@
 
 import React from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { useConnection } from '@/providers/BscWalletProvider';
-import { useQuery } from '@tanstack/react-query';
-import { useProfileTokens, useProfileHoldings, useProfileNetworth } from '@/hooks/useProfile';
+import { useProfileTokens, useProfileHoldings } from '@/hooks/useProfile';
 
 export function MenuWalletCard() {
   const { address } = useWallet();
-  const { connection } = useConnection();
 
-  const { data: balance } = useQuery({
-    queryKey: ['bnb-balance', address],
-    queryFn: async () => {
-      if (!address) return 0;
-      const wei = await connection.getBalance(address);
-      return wei / 1e18;
-    },
-    enabled: !!address,
-    refetchInterval: 15000,
-  });
-
-  const { data: networth } = useProfileNetworth(address || '');
   const { data: tokens } = useProfileTokens(address || '');
   const { data: holdings } = useProfileHoldings(address || '');
 
-  const portfolioValue = networth && networth.length > 0 ? networth[networth.length - 1].value : 0;
+  // Sum the real USDT value of every holding
+  const portfolioValue = holdings?.holdings?.reduce((sum, h) => sum + h.value, 0) ?? 0;
   const realTokensHeld = holdings?.holdings?.length || 0;
   const realCreated = tokens?.length || 0;
   const realGraduated = tokens?.filter((t: any) => t.isGraduated).length || 0;
@@ -44,22 +30,14 @@ export function MenuWalletCard() {
         gap: 'var(--space-4)',
       }}
     >
-      {/* Top Row: Balance & Portfolio */}
+      {/* Portfolio Value */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            Gas Balance
-          </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', color: '#FFFFFF', fontWeight: 600 }}>
-            {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
             Portfolio Value
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', color: 'var(--buy)', fontWeight: 600 }}>
-            {portfolioValue > 0 ? `${portfolioValue.toFixed(1)} USDT` : '— USDT'}
+            {portfolioValue > 0 ? `$${portfolioValue.toFixed(2)}` : '—'}
           </div>
         </div>
       </div>

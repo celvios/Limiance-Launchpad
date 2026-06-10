@@ -1,43 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { useConnection } from '@/providers/BscWalletProvider';
-import { Copy, ExternalLink, User } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { formatAddress } from '@/lib/format';
+import { User } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
 import { LimianceLogo } from '@/components/ui/LimianceLogo';
+import { useProfile } from '@/hooks/useProfile';
 
 export function MenuHeader() {
-  const { isAuthenticated, connected, address } = useWallet();
-  const { connection } = useConnection();
-  const { addToast } = useUIStore();
+  const { isAuthenticated, address } = useWallet();
+  const { addToast: _ } = useUIStore();
 
-  const { data: balance } = useQuery({
-    queryKey: ['bnb-balance', address],
-    queryFn: async () => {
-      if (!address) return 0;
-      const wei = await connection.getBalance(address);
-      return wei / 1e18;
-    },
-    enabled: !!address,
-    refetchInterval: 15000,
-  });
-
-  const handleCopy = () => {
-    if (address) {
-      navigator.clipboard.writeText(address);
-      addToast({ type: 'success', message: 'Address copied to clipboard' });
-    }
-  };
-
-  const handleSolscan = () => {
-    if (address) {
-      window.open(`https://testnet.bscscan.com/address/${address}`, '_blank');
-    }
-  };
+  const { data: profile } = useProfile(address || '');
 
   if (!isAuthenticated || !address) {
     return (
@@ -59,6 +34,14 @@ export function MenuHeader() {
     );
   }
 
+  const displayName = profile?.username
+    ? `@${profile.username}`
+    : `@user_${address.slice(0, 4).toLowerCase()}`;
+
+  const followerCount = profile?.followerCount ?? 0;
+  const followingCount = profile?.followingCount ?? 0;
+  const avatarUri = profile?.profilePicUri;
+
   // Connected state
   return (
     <div style={{ position: 'relative', marginBottom: 'var(--space-4)' }}>
@@ -67,7 +50,9 @@ export function MenuHeader() {
         style={{
           width: '100%',
           height: '80px',
-          background: 'var(--bg-elevated)', // Sub with actual cover image if fetched later
+          background: profile?.coverUri
+            ? `url(${profile.coverUri}) center/cover no-repeat`
+            : 'var(--bg-elevated)',
           position: 'relative',
         }}
       >
@@ -100,74 +85,75 @@ export function MenuHeader() {
             overflow: 'hidden',
           }}
         >
-          {/* Default user avatar. Can integrate dicebear or fetched avatar later */}
-          <User size={28} color="var(--text-muted)" />
+          {avatarUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUri}
+              alt="Profile"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <User size={28} color="var(--text-muted)" />
+          )}
         </div>
 
-        {/* User Info */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '18px',
-              fontWeight: 700,
-              color: '#FFFFFF',
-            }}
-          >
-            @user_{address.slice(0, 4).toLowerCase()}
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '12px',
-                color: 'var(--text-muted)',
-              }}
-            >
-              {formatAddress(address)}
-            </span>
+        {/* Username */}
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '18px',
+            fontWeight: 700,
+            color: '#FFFFFF',
+            marginBottom: '6px',
+          }}
+        >
+          {displayName}
+        </div>
+
+        {/* Following / Followers */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--buy)',
+                fontWeight: 700,
+                color: '#FFFFFF',
               }}
             >
-              {balance !== undefined ? `${balance.toFixed(2)} BNB gas` : '— BNB gas'}
+              {followingCount}
             </span>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <button 
-                onClick={handleCopy}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: 0,
-                  cursor: 'pointer',
-                }}
-              >
-                <Copy size={12} />
-              </button>
-              <button 
-                onClick={handleSolscan}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: 0,
-                  cursor: 'pointer',
-                }}
-              >
-                <ExternalLink size={12} />
-              </button>
-            </div>
+            <span
+              style={{
+                fontFamily: 'var(--font-ui)',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+              }}
+            >
+              Following
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#FFFFFF',
+              }}
+            >
+              {followerCount}
+            </span>
+            <span
+              style={{
+                fontFamily: 'var(--font-ui)',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+              }}
+            >
+              Followers
+            </span>
           </div>
         </div>
       </div>

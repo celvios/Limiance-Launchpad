@@ -211,6 +211,8 @@ export interface UserProfile {
   walletAddress: string;
   username: string | null;
   bio: string | null;
+  profilePicUri?: string | null;
+  coverUri?: string | null;
   joinedAt: number;
   tokensCreated: number;
   followerCount: number;
