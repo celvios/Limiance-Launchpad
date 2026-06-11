@@ -242,7 +242,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
         flexDirection: 'column',
         height: isFullscreen ? '100vh' : '100%',
         width: isFullscreen ? '100vw' : '100%',
-        minHeight: '420px',
+        minHeight: '550px',
         position: 'relative',
         overflow: 'hidden',
       }}
