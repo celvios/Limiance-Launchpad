@@ -10,7 +10,9 @@ import {
   CandlestickSeries,
   HistogramSeries,
   CrosshairMode,
+  LineStyle,
 } from 'lightweight-charts';
+import { Maximize, Minimize } from 'lucide-react';
 import { useChartData } from '@/hooks/useTokenDetail';
 import type { ChartTimeRange } from '@/lib/types';
 
@@ -46,7 +48,9 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
   const [range, setRange] = useState<ChartTimeRange>('1D');
   const { data, isLoading } = useChartData(mint, range);
 
+  const containerWrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const chartRef          = useRef<IChartApi | null>(null);
   const candleRef         = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeRef         = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -68,25 +72,45 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       .sort((a, b) => (a.time as number) - (b.time as number));
   }, [data]);
 
+  // Fullscreen listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (chartRef.current) {
+        setTimeout(() => chartRef.current?.timeScale().fitContent(), 50);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerWrapperRef.current?.requestFullscreen().catch(console.error);
+    } else {
+      document.exitFullscreen().catch(console.error);
+    }
+  };
+
   // Build chart once
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#6b7280',
+        background: { type: ColorType.Solid, color: '#0d0d14' },
+        textColor: '#9ca3af',
         fontFamily: '"IBM Plex Mono", monospace',
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: 'rgba(255,255,255,0.04)' },
-        horzLines: { color: 'rgba(255,255,255,0.04)' },
+        vertLines: { color: 'rgba(255,255,255,0.06)', style: LineStyle.Dotted },
+        horzLines: { color: 'rgba(255,255,255,0.06)', style: LineStyle.Dotted },
       },
       rightPriceScale: {
         borderVisible: false,
         scaleMargins: { top: 0.05, bottom: 0.22 }, // leave bottom 22% for volume only
-        textColor: '#6b7280',
+        textColor: '#9ca3af',
         autoScale: true,
         mode: 2, // 2 = Logarithmic scale (prevents huge outliers from flattening the chart)
       },
@@ -96,11 +120,12 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
         secondsVisible: false,
         fixLeftEdge: false,
         fixRightEdge: false,
+        rightOffset: 12,
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
-        horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
+        vertLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#1a1a2e' },
+        horzLine: { color: 'rgba(255,255,255,0.15)', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#1a1a2e' },
       },
       autoSize: true,
     });
@@ -110,7 +135,9 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     const candle = chart.addSeries(CandlestickSeries, {
       upColor:       '#22c55e',
       downColor:     '#ef4444',
-      borderVisible: false,
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      borderVisible: true,
       wickUpColor:   '#22c55e',
       wickDownColor: '#ef4444',
     });
@@ -182,7 +209,14 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       }))
     );
 
-    chartRef.current?.timeScale().fitContent();
+    if (formattedData.length <= 2) {
+      chartRef.current?.timeScale().setVisibleLogicalRange({
+        from: -15,
+        to: 15,
+      });
+    } else {
+      chartRef.current?.timeScale().fitContent();
+    }
 
     // Seed tooltip with last candle
     const last = formattedData[formattedData.length - 1];
@@ -202,20 +236,22 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
 
   return (
     <div
+      ref={containerWrapperRef}
       style={{
         background: '#0d0d14',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '12px',
+        border: isFullscreen ? 'none' : '1px solid rgba(255,255,255,0.06)',
+        borderRadius: isFullscreen ? '0px' : '12px',
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        height: isFullscreen ? '100vh' : '100%',
+        width: isFullscreen ? '100vw' : '100%',
         minHeight: '420px',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
       {/* ── DexScreener-style header ── */}
-      <div style={{ padding: '12px 16px 8px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ padding: '12px 16px 8px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0d0d14', zIndex: 10 }}>
         
         {/* OHLCV row */}
         {tooltip ? (
@@ -253,28 +289,51 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
             </span>
           </div>
 
-          {/* Time range tabs */}
-          <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: 8 }}>
-            {TIME_RANGES.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => setRange(r.id)}
-                style={{
-                  border: 'none',
-                  background: range === r.id ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: range === r.id ? '#f9fafb' : '#6b7280',
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontFamily: 'IBM Plex Mono, monospace',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {r.label}
-              </button>
-            ))}
+          {/* Actions: Time range + Expand */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Time range tabs */}
+            <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: 8 }}>
+              {TIME_RANGES.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => setRange(r.id)}
+                  style={{
+                    border: 'none',
+                    background: range === r.id ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    color: range === r.id ? '#f9fafb' : '#6b7280',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Expand button */}
+            <button
+              onClick={toggleFullscreen}
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: 'none',
+                color: '#9ca3af',
+                padding: '6px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+            </button>
           </div>
         </div>
       </div>
