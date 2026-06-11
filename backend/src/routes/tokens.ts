@@ -441,7 +441,7 @@ export async function tokenRoutes(app: FastifyInstance) {
     const countMap = await fetchTokenSocialCounts(page.map((t) => t.mint));
 
     return reply.send({
-      tokens: page.map((t) => serializeToken(t, profileMap.get(t.creator), countMap.get(t.mint))),
+      tokens: await Promise.all(page.map((t) => serializeToken(t, profileMap.get(t.creator), countMap.get(t.mint)))),
       nextCursor,
       total: page.length,
     });
@@ -464,7 +464,8 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     const countMap = await fetchTokenSocialCounts([token.mint]);
 
-    return reply.send({ ...serializeToken(token, creatorHandle, countMap.get(token.mint)), creatorPicUri: creatorPic });
+    const serializedToken = await serializeToken(token, creatorHandle, countMap.get(token.mint));
+    return reply.send({ ...serializedToken, creatorPicUri: creatorPic });
   });
 
   app.post('/api/tokens/:address/trade', async (req, reply) => {
