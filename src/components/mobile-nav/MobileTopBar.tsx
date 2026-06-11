@@ -33,15 +33,19 @@ export function MobileTopBar() {
       }}
     >
       {!isSearchExpanded ? (
-        /* Normal mode: hamburger | logo (center) | search */
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', position: 'relative' }}>
-          {/* Left: Hamburger */}
+        /* Normal mode: 3-column grid guarantees true centering */
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          width: '100%',
+        }}>
+          {/* Column 1 (left): Hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
             style={{
               width: '40px',
               height: '40px',
-              flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'flex-start',
@@ -59,35 +63,36 @@ export function MobileTopBar() {
             </svg>
           </button>
 
-          {/* Center: Logo (absolutely positioned to guarantee true center) */}
-          <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center' }}>
+          {/* Column 2 (center): Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
               alt="Limiance"
-              style={{ height: '22px', objectFit: 'contain', mixBlendMode: 'lighten' }}
+              style={{ height: '26px', objectFit: 'contain', mixBlendMode: 'lighten' }}
             />
           </div>
 
-          {/* Right: Search toggle */}
-          <button
-            onClick={() => setIsSearchExpanded(true)}
-            style={{
-              width: '40px',
-              height: '40px',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-primary)',
-              padding: 0,
-              cursor: 'pointer',
-            }}
-          >
-            <Search size={20} />
-          </button>
+          {/* Column 3 (right): Search — aligned to the right edge */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setIsSearchExpanded(true)}
+              style={{
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              <Search size={20} />
+            </button>
+          </div>
         </div>
       ) : (
         /* Expanded Search Mode */
