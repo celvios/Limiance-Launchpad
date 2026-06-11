@@ -45,7 +45,7 @@ function formatVolume(v: number): string {
 }
 
 export function PriceChart({ mint, currentPrice }: PriceChartProps) {
-  const [range, setRange] = useState<ChartTimeRange>('1D');
+  const [range, setRange] = useState<ChartTimeRange>('1H');
   const { data, isLoading } = useChartData(mint, range);
 
   const containerWrapperRef = useRef<HTMLDivElement>(null);

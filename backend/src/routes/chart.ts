@@ -16,10 +16,10 @@ const ChartQuery = z.object({
 
 /** Bucket duration in seconds per range. */
 const BUCKET_SECONDS: Record<string, number> = {
-  '1h':  60,      // 1-minute candles over 1 hour
-  '4h':  300,     // 5-minute candles over 4 hours
-  '1d':  1800,    // 30-minute candles over 1 day
-  'all': 86400,   // 1-day candles over all time
+  '1h':  60,      // 1-minute candles
+  '4h':  60,      // 1-minute candles
+  '1d':  300,     // 5-minute candles
+  'all': 3600,    // 1-hour candles
 };
 
 /** How far back to look per range. */
