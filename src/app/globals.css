@@ -258,7 +258,6 @@ body {
   }
   .token-page-grid > div:last-child {
     position: static !important;
-    order: -1; /* Trade panel on top on mobile */
   }
 }
 

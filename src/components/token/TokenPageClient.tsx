@@ -8,7 +8,6 @@ import { PriceChart } from '@/components/token/PriceChart';
 import { SupplyBar } from '@/components/token/SupplyBar';
 import { GraduationBanner } from '@/components/token/GraduationBanner';
 import { TradePanel } from '@/components/token/TradePanel';
-import { ActivityFeed } from '@/components/token/ActivityFeed';
 import { OrderBook } from '@/components/token/OrderBook';
 import { useGraduationHandler } from '@/hooks/useGraduationHandler';
 import { CommentSection } from '@/components/social/CommentSection';
@@ -196,9 +195,6 @@ export function TokenPageClient() {
               ))}
             </div>
           </div>
-
-          <ActivityFeed mint={mint} />
-
           {/* Comments */}
           <CommentSection mint={mint} />
         </div>
