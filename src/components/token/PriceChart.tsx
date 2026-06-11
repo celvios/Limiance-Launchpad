@@ -211,7 +211,15 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     );
 
     // Fit time scale & force price scale to auto-scale to data range
-    chartRef.current?.timeScale().fitContent();
+    if (formattedData.length <= 5) {
+      // Pad the x-axis if there are very few candles so they don't stretch massively
+      chartRef.current?.timeScale().setVisibleLogicalRange({
+        from: -10,
+        to: formattedData.length + 10,
+      });
+    } else {
+      chartRef.current?.timeScale().fitContent();
+    }
     // Force the price scale to re-fit to the visible data
     chartRef.current?.priceScale('right').applyOptions({ autoScale: true });
 
@@ -336,7 +344,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       </div>
 
       {/* ── Chart area ── */}
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+      <div style={{ flex: 1, position: 'relative', minHeight: '400px' }}>
         {/* Loading spinner */}
         {isLoading && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13,13,20,0.7)', zIndex: 10, backdropFilter: 'blur(2px)' }}>
@@ -352,7 +360,7 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
           </div>
         )}
 
-        <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={chartContainerRef} style={{ position: 'absolute', inset: 0 }} />
       </div>
     </div>
   );

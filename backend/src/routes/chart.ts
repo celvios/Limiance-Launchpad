@@ -167,25 +167,23 @@ export async function chartRoutes(app: FastifyInstance) {
     );
 
     const filledBuckets: Bucket[] = [];
-    let previousClose = previousTrade
-      ? previousTrade.pricePerToken
-      : (trades.length > 0 ? trades[0].pricePerToken : 0n);
+    
+    // Iterate through sorted buckets and only add the ones that have actual trades
+    for (const bucket of sortedBuckets) {
+      filledBuckets.push(bucket);
+    }
 
-    for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
-      const bucket = bucketMap.get(time);
-      if (bucket) {
-        filledBuckets.push(bucket);
-        previousClose = bucket.close;
-      } else {
-        filledBuckets.push({
-          time,
-          open: previousClose,
-          high: previousClose,
-          low: previousClose,
-          close: previousClose,
-          volume: 0n,
-        });
-      }
+    // Always ensure there is a bucket for the current time to show the live price
+    if (filledBuckets.length === 0 || filledBuckets[filledBuckets.length - 1].time < currentBucketTime) {
+      const lastClose = filledBuckets.length > 0 ? filledBuckets[filledBuckets.length - 1].close : (previousTrade ? previousTrade.pricePerToken : 0n);
+      filledBuckets.push({
+        time: currentBucketTime,
+        open: lastClose,
+        high: lastClose,
+        low: lastClose,
+        close: lastClose,
+        volume: 0n,
+      });
     }
 
     // ── Override the current (latest) bucket with the live spot price ──────────
