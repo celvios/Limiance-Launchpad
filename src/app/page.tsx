@@ -88,7 +88,7 @@ export default function FeedPage() {
       />
 
       {/* Featured row */}
-      <FeaturedRow />
+
 
       {/* Filter tabs */}
       <Tabs
