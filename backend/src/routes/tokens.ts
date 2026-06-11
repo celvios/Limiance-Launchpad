@@ -127,39 +127,43 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
   return countMap;
 }
 
-// The sigmoid curve uses graduationThreshold/2 as the midpoint.
-// This means:
-//   supply=0 → price≈pMin
-//   supply=graduationThreshold/2 → price midway between pMin and pMax
-//   supply=graduationThreshold → price≈pMax
-// curveK=10 gives a nice S-curve shape.
-const CURVE_K = 10.0;
+// ─── Exponential Bonding Curve ────────────────────────────────────────────────
+// Price formula: Price(supply) = pMin * (pMax/pMin)^(supply / graduationThreshold)
+//   supply=0  → price = pMin   (starting price)
+//   supply=GT → price = pMax   (graduation price)
+// Every single buy immediately pushes the price up — no flat tail.
 
-function getSigmoidPrice(supply: number, pMin: number, pMax: number, _k: number, graduationThreshold: number): number {
-  if (graduationThreshold <= 0) return pMin;
-  const midpoint = graduationThreshold / 2;
-  const normalizedSupply = supply / midpoint;
-  const expVal = Math.exp(-CURVE_K * (normalizedSupply - 1.0));
-  return pMin + (pMax - pMin) / (1 + expVal);
+function getExponentialPrice(
+  supply: number,
+  pMin: number,
+  pMax: number,
+  graduationThreshold: number,
+): number {
+  if (graduationThreshold <= 0 || pMin <= 0 || pMax <= pMin) return pMin;
+  return pMin * Math.pow(pMax / pMin, supply / graduationThreshold);
 }
 
-function getSigmoidIntegral(supply: number, pMin: number, pMax: number, _k: number, graduationThreshold: number): number {
-  if (graduationThreshold <= 0) return 0;
-  const midpoint = graduationThreshold / 2;
-  // Numerical integration via trapezoid rule (100 steps) — avoids overflow
-  const steps = 100;
-  let total = 0;
-  const step = supply / steps;
-  for (let i = 0; i < steps; i++) {
-    const x0 = i * step;
-    const x1 = (i + 1) * step;
-    const p0 = getSigmoidPrice(x0, pMin, pMax, 0, graduationThreshold);
-    const p1 = getSigmoidPrice(x1, pMin, pMax, 0, graduationThreshold);
-    total += (p0 + p1) * step / 2;
-  }
-  return total;
+/**
+ * Exact closed-form integral: total USDT cost to buy `supply` tokens from 0.
+ *   ∫₀ˢ pMin*(pMax/pMin)^(x/GT) dx = pMin*GT/ln(pMax/pMin) * [(pMax/pMin)^(s/GT) - 1]
+ */
+function getExponentialIntegral(
+  supply: number,
+  pMin: number,
+  pMax: number,
+  graduationThreshold: number,
+): number {
+  if (graduationThreshold <= 0 || pMin <= 0) return 0;
+  if (pMax <= pMin) return pMin * supply;
+  const ratio = pMax / pMin;
+  const lnRatio = Math.log(ratio);
+  return (pMin * graduationThreshold / lnRatio) * (Math.pow(ratio, supply / graduationThreshold) - 1);
 }
 
+/**
+ * Given a USDT payment, returns the number of tokens received starting from currentSupply.
+ * Uses the exact analytical inverse of the cost integral.
+ */
 function estimateBuyTokensForPayment(
   paymentUsdt: number,
   currentSupply: number,
@@ -170,26 +174,15 @@ function estimateBuyTokensForPayment(
   if (paymentUsdt <= 0) return 0;
   const remaining = Math.max(0, graduationThreshold - currentSupply);
   if (remaining <= 0) return 0;
+  if (pMax <= pMin) return Math.min(Math.floor(paymentUsdt / pMin), remaining);
 
-  let lo = 0;
-  let hi = remaining;
-  let tokensOut = 0;
+  const ratio = pMax / pMin;
+  const lnRatio = Math.log(ratio);
+  const priceAtCurrent = pMin * Math.pow(ratio, currentSupply / graduationThreshold);
+  const tokensOut = (graduationThreshold / lnRatio) *
+    Math.log(1 + (paymentUsdt * lnRatio) / (priceAtCurrent * graduationThreshold));
 
-  for (let i = 0; i < 48; i++) {
-    const mid = (lo + hi) / 2;
-    const cost =
-      getSigmoidIntegral(currentSupply + mid, pMin, pMax, 0, graduationThreshold) -
-      getSigmoidIntegral(currentSupply, pMin, pMax, 0, graduationThreshold);
-
-    if (cost <= paymentUsdt) {
-      tokensOut = mid;
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-
-  return Math.floor(tokensOut);
+  return Math.floor(Math.min(tokensOut, remaining));
 }
 
 function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
@@ -198,10 +191,9 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
   const cap = Number(token.supplyCap.toString());
   const pMax = Number(token.curveParamA.toString()) / 1e18;
   const pMin = Number(token.curveParamB.toString()) / 1e18;
-  const k = Number(token.curveParamC) / 1e6; // k stored for reference; curve now uses graduationThreshold/2 as midpoint
   const graduationThresholdNum = Number(token.graduationThreshold);
 
-  const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, graduationThresholdNum);
+  const currentPrice = getExponentialPrice(supply, pMin, pMax, graduationThresholdNum);
   const totalRaised = counts.totalRaised;
   // Market cap = current price × total supply cap (fully diluted)
   const marketCap = cap > 0 ? currentPrice * cap : 0;
@@ -218,14 +210,8 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
     creatorWallet: token.creator,
     creatorHandle: creatorHandle ?? null,
     createdAt: token.createdAt.getTime(),
-    curveType: 'sigmoid',
-    curveParams: {
-      type: 'sigmoid',
-      pMin,
-      pMax,
-      k,
-      midpoint: graduationThresholdNum / 2,
-    },
+    curveType: 'exponential',
+    curveParams: { type: 'exponential', pMin, pMax },
     currentSupply: supply,
     supplyCap: cap,
     graduationThreshold: graduationThresholdNum,
@@ -279,10 +265,10 @@ export async function tokenRoutes(app: FastifyInstance) {
           currentSupply: BigInt(body.initialBuyAmount),
           graduationThreshold,
           creatorAllocation: 0,
-          curveType: 'sigmoid',
+          curveType: 'exponential',
           curveParamA: toWei(pMax),
           curveParamB: toWei(pMin),
-          curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
+          curveParamC: 0n, // unused for exponential curve
           status: 'active',
         },
       });
@@ -291,7 +277,7 @@ export async function tokenRoutes(app: FastifyInstance) {
       let initialSolAmountWei = 0n;
       let costUsdt = 0;
       if (body.initialBuyAmount > 0) {
-        costUsdt = getSigmoidIntegral(body.initialBuyAmount, pMin, pMax, 0, Number(graduationThreshold));
+        costUsdt = getExponentialIntegral(body.initialBuyAmount, pMin, pMax, Number(graduationThreshold));
         initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6));
       }
 
