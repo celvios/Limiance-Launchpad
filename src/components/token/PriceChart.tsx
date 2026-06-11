@@ -109,10 +109,11 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       },
       rightPriceScale: {
         borderVisible: false,
-        scaleMargins: { top: 0.05, bottom: 0.22 }, // leave bottom 22% for volume only
+        scaleMargins: { top: 0.12, bottom: 0.28 },
         textColor: '#9ca3af',
         autoScale: true,
-        mode: 2, // 2 = Logarithmic scale (prevents huge outliers from flattening the chart)
+        mode: 0, // 0 = Normal scale — log scale distorts tiny price ranges
+        minimumWidth: 80,
       },
       timeScale: {
         borderVisible: false,
@@ -209,14 +210,10 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       }))
     );
 
-    if (formattedData.length <= 2) {
-      chartRef.current?.timeScale().setVisibleLogicalRange({
-        from: -15,
-        to: 15,
-      });
-    } else {
-      chartRef.current?.timeScale().fitContent();
-    }
+    // Fit time scale & force price scale to auto-scale to data range
+    chartRef.current?.timeScale().fitContent();
+    // Force the price scale to re-fit to the visible data
+    chartRef.current?.priceScale('right').applyOptions({ autoScale: true });
 
     // Seed tooltip with last candle
     const last = formattedData[formattedData.length - 1];
