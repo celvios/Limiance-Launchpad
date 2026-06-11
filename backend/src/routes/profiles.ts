@@ -552,32 +552,89 @@ export async function profileRoutes(fastify: FastifyInstance) {
       return reply.send({ following: false });
     }
   );
-  // Net worth history (Mocked for now)
+  // Net worth history — computed from real trade history
   fastify.get<{ Params: { wallet: string } }>(
     '/api/profiles/:wallet/networth',
     async (req, reply) => {
       const { wallet } = req.params;
-      
-      // Since historical net worth tracking isn't implemented on-chain yet,
-      // we generate a realistic-looking 30-day sparkline around a base value.
-      // In production, this would query a daily snapshot table.
-      const data = [];
-      let currentVal = 500000; // start around $500k
-      
-      for (let i = 30; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        // Random walk
-        currentVal += (Math.random() - 0.45) * 50000; // Bias slightly upward
-        if (currentVal < 10000) currentVal = 10000;
-        
-        data.push({
-          time: Math.floor(d.getTime() / 1000), // Unix timestamp
-          value: Math.round(currentVal * 100) / 100
-        });
+
+      // Fetch all trades for this wallet, oldest first
+      const trades = await prisma.trade.findMany({
+        where: { walletAddress: wallet },
+        orderBy: { timestamp: 'asc' },
+        select: {
+          timestamp: true,
+          type: true,
+          amount: true,        // raw token units (1e6)
+          solAmount: true,     // USDT paid/received (1e6)
+          tokenMint: true,
+        },
+      });
+
+      if (trades.length === 0) {
+        return reply.send({ networth: [] });
       }
 
-      // Format for lightweight-charts: { time: number, value: number }[]
+      // Fetch token curve params for all tokens the user has traded
+      const mints = [...new Set(trades.map((t) => t.tokenMint))];
+      const tokens = await prisma.token.findMany({
+        where: { mint: { in: mints } },
+        select: {
+          mint: true,
+          curveParamA: true,      // pMax ×1e18
+          curveParamB: true,      // pMin ×1e18
+          graduationThreshold: true,
+          currentSupply: true,
+        },
+      });
+      const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
+
+      // Replay trades: track per-token running supply and USDT spent
+      // Group trades by UTC day, compute end-of-day portfolio value
+      const dayMap = new Map<string, number>(); // "YYYY-MM-DD" → value
+
+      // Running state
+      const holding = new Map<string, number>(); // tokenMint → human token count
+      const tokenSupplyAtTime = new Map<string, number>(); // rough supply proxy
+
+      for (const trade of trades) {
+        const dayKey = trade.timestamp.toISOString().slice(0, 10);
+        const amount = Number(trade.amount) / 1e6; // human tokens
+
+        if (trade.type === 'buy') {
+          holding.set(trade.tokenMint, (holding.get(trade.tokenMint) ?? 0) + amount);
+          tokenSupplyAtTime.set(trade.tokenMint, (tokenSupplyAtTime.get(trade.tokenMint) ?? 0) + amount);
+        } else {
+          holding.set(trade.tokenMint, Math.max(0, (holding.get(trade.tokenMint) ?? 0) - amount));
+          tokenSupplyAtTime.set(trade.tokenMint, Math.max(0, (tokenSupplyAtTime.get(trade.tokenMint) ?? 0) - amount));
+        }
+
+        // Compute current portfolio value at end of this trade
+        let dayValue = 0;
+        for (const [mint, tokenAmt] of holding.entries()) {
+          if (tokenAmt <= 0) continue;
+          const token = tokenMap.get(mint);
+          if (!token) continue;
+          const pMax = Number(token.curveParamA) / 1e18;
+          const pMin = Number(token.curveParamB) / 1e18;
+          const gt = Number(token.graduationThreshold) / 1e6;
+          const supply = tokenSupplyAtTime.get(mint) ?? 0;
+          const price = (pMin > 0 && pMax > pMin && gt > 0)
+            ? pMin * Math.pow(pMax / pMin, supply / gt)
+            : pMax;
+          dayValue += tokenAmt * price;
+        }
+        // Keep highest value seen for this day
+        dayMap.set(dayKey, Math.max(dayMap.get(dayKey) ?? 0, dayValue));
+      }
+
+      const data = Array.from(dayMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, value]) => ({
+          time: Math.floor(new Date(day).getTime() / 1000),
+          value: Math.round(value * 1e6) / 1e6,
+        }));
+
       return reply.send({ networth: data });
     }
   );

@@ -185,7 +185,7 @@ function estimateBuyTokensForPayment(
   return Math.floor(Math.min(tokensOut, remaining));
 }
 
-function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
+async function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
   const tokenAddress = token.tokenAddress ?? token.mint;
   const supply = Number(token.currentSupply.toString());
   const cap = Number(token.supplyCap.toString());
@@ -199,6 +199,22 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
   const marketCap = cap > 0 ? currentPrice * cap : 0;
   // Circulating market cap = current price × tokens already sold
   const circulatingMarketCap = currentPrice * supply;
+
+  // ── Real 24h price change ────────────────────────────────────────────────────
+  // Find the oldest trade from 24h ago; if none, use pMin (starting price) as baseline.
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const trade24hAgo = await prisma.trade.findFirst({
+    where: { tokenMint: tokenAddress, timestamp: { lte: cutoff24h } },
+    orderBy: { timestamp: 'desc' },
+    select: { pricePerToken: true },
+  });
+  // price24h: use stored trade price OR fall back to pMin for brand-new tokens
+  const price24h = trade24hAgo
+    ? Number(trade24hAgo.pricePerToken) / 1e18
+    : pMin;
+  const priceChange24h = price24h > 0
+    ? ((currentPrice - price24h) / price24h) * 100
+    : 0;
 
   return {
     tokenAddress,
@@ -217,7 +233,7 @@ function serializeToken(token: any, creatorHandle?: string | null, counts: Token
     graduationThreshold: graduationThresholdNum,
     status: token.status,
     price: currentPrice,
-    priceChange24h: 0,
+    priceChange24h: Math.round(priceChange24h * 100) / 100,
     marketCap,
     circulatingMarketCap,
     commentCount: counts.commentCount,
