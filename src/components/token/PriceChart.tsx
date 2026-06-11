@@ -22,9 +22,6 @@ interface PriceChartProps {
 }
 
 const TIME_RANGES: { id: ChartTimeRange; label: string }[] = [
-  { id: '1H', label: '1H' },
-  { id: '4H', label: '4H' },
-  { id: '1D', label: '1D' },
   { id: 'ALL', label: 'ALL' },
 ];
 
@@ -45,7 +42,7 @@ function formatVolume(v: number): string {
 }
 
 export function PriceChart({ mint, currentPrice }: PriceChartProps) {
-  const [range, setRange] = useState<ChartTimeRange>('1H');
+  const [range, setRange] = useState<ChartTimeRange>('ALL');
   const { data, isLoading } = useChartData(mint, range);
 
   const containerWrapperRef = useRef<HTMLDivElement>(null);
@@ -313,26 +310,20 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {/* Time range tabs */}
             <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', padding: '3px', borderRadius: 8 }}>
-              {TIME_RANGES.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setRange(r.id)}
-                  style={{
-                    border: 'none',
-                    background: range === r.id ? 'rgba(255,255,255,0.12)' : 'transparent',
-                    color: range === r.id ? '#f9fafb' : '#6b7280',
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    fontFamily: 'IBM Plex Mono, monospace',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {r.label}
-                </button>
-              ))}
+              <div
+                style={{
+                  border: 'none',
+                  background: 'rgba(255,255,255,0.12)',
+                  color: '#f9fafb',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                ALL
+              </div>
             </div>
 
             {/* Expand button */}
