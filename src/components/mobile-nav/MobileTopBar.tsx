@@ -34,7 +34,7 @@ export function MobileTopBar() {
     >
       {!isSearchExpanded ? (
         /* Normal mode: hamburger | logo (center) | search */
-        <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', position: 'relative' }}>
           {/* Left: Hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
@@ -44,7 +44,7 @@ export function MobileTopBar() {
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'flex-start',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
@@ -59,8 +59,8 @@ export function MobileTopBar() {
             </svg>
           </button>
 
-          {/* Center: Logo — takes all remaining space, content centered */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* Center: Logo (absolutely positioned to guarantee true center) */}
+          <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
@@ -78,7 +78,7 @@ export function MobileTopBar() {
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'flex-end',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
