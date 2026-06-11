@@ -22,7 +22,7 @@ export function MarqueeTicker() {
   // Fetch real recent tokens as fallback/initial data
   const { data: recentTokens } = useQuery({
     queryKey: ['marqueeFallback'],
-    queryFn: () => fetchFeedTokens({ filter: 'new', limit: 10 }),
+    queryFn: () => fetchFeedTokens({ filter: 'new', tags: [], limit: 10 }),
     staleTime: 60_000,
   });
 
