@@ -52,7 +52,7 @@ export function MarqueeTicker() {
         id: token.mint,
         type: token.status === 'graduated' ? 'grad' : 'new',
         symbol: token.symbol,
-        creator: token.creator.slice(0, 6),
+        creator: token.creatorWallet.slice(0, 6),
       });
       if (items.length >= 12) break;
     }
