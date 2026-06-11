@@ -22,6 +22,7 @@ export function MobileTopBar() {
       style={{
         display: 'flex',
         alignItems: 'center',
+        width: '100%',
         height: '52px',
         padding: '0 var(--space-4)',
         background: 'var(--bg-base)',
