@@ -617,7 +617,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
           if (!token) continue;
           const pMax = Number(token.curveParamA) / 1e18;
           const pMin = Number(token.curveParamB) / 1e18;
-          const gt = Number(token.graduationThreshold) / 1e6;
+          const gt = Number(token.graduationThreshold);
           const supply = tokenSupplyAtTime.get(mint) ?? 0;
           const price = (pMin > 0 && pMax > pMin && gt > 0)
             ? pMin * Math.pow(pMax / pMin, supply / gt)
@@ -632,8 +632,17 @@ export async function profileRoutes(fastify: FastifyInstance) {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([day, value]) => ({
           time: Math.floor(new Date(day).getTime() / 1000),
-          value: Math.round(value * 1e6) / 1e6,
+          value: Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : 0,
         }));
+
+      // If there's only 1 day of history, lightweight-charts will just draw a flat line 
+      // or a dot. Add a 0 point for the day before their first trade to show an upward slope.
+      if (data.length === 1) {
+        data.unshift({
+          time: data[0].time - 86400,
+          value: 0,
+        });
+      }
 
       return reply.send({ networth: data });
     }
