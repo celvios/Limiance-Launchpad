@@ -386,10 +386,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const tokens = await prisma.token.findMany({ where: { mint: { in: mints } } });
       const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
 
-      const PAYMENT_UNIT = 1_000_000_000_000_000_000n;
-      const INTERNAL_PAYMENT_UNIT = 1_000_000n;
-      const TOKEN_DECIMALS = 1_000_000n;
-
       const holdings = netHoldings
         .map((h) => {
           const token = tokenMap.get(h.tokenMint);
@@ -404,30 +400,28 @@ export async function profileRoutes(fastify: FastifyInstance) {
             BigInt(token.supplyCap.toString())
           );
 
-          const avgBuyInternal =
-            h.buyAmount > BigInt(0)
-              ? (h.solSpent * TOKEN_DECIMALS) / h.buyAmount
-              : 0n;
-
-          const currentWei = Number(currentPrice);
-          const currentInternal = currentPrice / (PAYMENT_UNIT / INTERNAL_PAYMENT_UNIT);
-          const pnlPercent =
-            avgBuyInternal > 0n
-              ? ((Number(currentInternal) - Number(avgBuyInternal)) / Number(avgBuyInternal)) * 100
-              : 0;
-
-          const valueWei = (h.net * BigInt(currentWei)) / TOKEN_DECIMALS;
-          const valuePayment = Number(valueWei) / Number(PAYMENT_UNIT);
+          // All math in human-readable floats — avoids BigInt overflow (e+22)
+          // currentPrice from computeSpotPrice is ×1e18 → divide to get USDT per token
+          const currentPriceUsdt = Number(currentPrice) / 1e18;
+          // h.net is in raw token units (1e6 decimals)
+          const tokenAmount = Number(h.net) / 1e6;
+          // h.solSpent is in internal USDT units (1e6 decimals)
+          const usdtSpent = Number(h.solSpent) / 1e6;
+          const avgBuyPrice = tokenAmount > 0 ? usdtSpent / tokenAmount : 0;
+          const value = tokenAmount * currentPriceUsdt;
+          const pnlPercent = avgBuyPrice > 0
+            ? ((currentPriceUsdt - avgBuyPrice) / avgBuyPrice) * 100
+            : 0;
 
           return {
             mint: token.mint,
             symbol: token.symbol,
             name: token.name,
-            amount: Number(h.net) / Number(TOKEN_DECIMALS),
-            avgBuyPrice: Number(avgBuyInternal) / Number(INTERNAL_PAYMENT_UNIT),
-            currentPrice: currentWei / Number(PAYMENT_UNIT),
+            amount: Math.round(tokenAmount * 1e6) / 1e6,
+            avgBuyPrice: Math.round(avgBuyPrice * 1e8) / 1e8,
+            currentPrice: Math.round(currentPriceUsdt * 1e8) / 1e8,
             pnlPercent: Math.round(pnlPercent * 100) / 100,
-            value: Math.round(valuePayment * 1e6) / 1e6,
+            value: Math.round(value * 1e6) / 1e6,
           };
         })
         .filter((h): h is NonNullable<typeof h> => h !== null);
