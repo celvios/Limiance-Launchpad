@@ -50,6 +50,7 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
   const queryClient = useQueryClient();
   const prevBalanceRef = useRef<bigint>(totalAvailableUSDT);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncInProgressRef = useRef<boolean>(false);
 
   const displayBalance = Number(totalAvailableUSDT) / 1e6;
   const isWalletUser = authType === 'wallet';
@@ -57,36 +58,44 @@ export function DepositWithdrawModal({ onClose }: DepositWithdrawModalProps) {
 
   const syncVaultBalance = async () => {
     if (!authToken) return null;
+    if (syncInProgressRef.current) return null; // prevent concurrent calls
+    syncInProgressRef.current = true;
 
-    const res = await fetch(`${API_BASE_URL}/deposits/sync-vault`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({}),
-    });
+    try {
+      const res = await fetch(`${API_BASE_URL}/deposits/sync-vault`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({}),
+      });
 
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.credited) {
-      queryClient.invalidateQueries({ queryKey: ['userBalance'] });
-      setDepositStep(3);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.credited) {
+        // Stop polling immediately — no more sync calls
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        queryClient.invalidateQueries({ queryKey: ['userBalance'] });
+        setDepositStep(3);
+      }
+      return data;
+    } finally {
+      syncInProgressRef.current = false;
     }
-    return data;
   };
 
   // ── Step 2: poll for balance change after showing address ──────────────────
   useEffect(() => {
     if (depositStep === 2) {
-      // Capture the baseline balance when entering step 2
-      const baselineBalance = totalAvailableUSDT;
-
       syncVaultBalance().catch(() => null);
       pollingRef.current = setInterval(() => {
         queryClient.invalidateQueries({ queryKey: ['userBalance'] });
         syncVaultBalance().catch(() => null);
-      }, 3000);
+      }, 5000); // slowed from 3s to 5s to reduce server load
 
       return () => {
         if (pollingRef.current) clearInterval(pollingRef.current);

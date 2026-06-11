@@ -69,10 +69,16 @@ export function useUserBalance() {
     },
   });
 
-  // Sum all available USDT using the correct PAYMENT_ASSET address
-  const totalAvailableUSDT = balanceQuery.data
-    ?.filter((b) => b.asset.toLowerCase() === PAYMENT_ASSET.toLowerCase())
-    .reduce((acc, b) => acc + BigInt(b.available), 0n) ?? 0n;
+  // Sum all available USDT using the correct PAYMENT_ASSET address.
+  // Guard: if PAYMENT_ASSET is the zero address (env not set), return 0 to avoid
+  // summing unrelated assets or showing a garbage balance.
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
+  const totalAvailableUSDT =
+    PAYMENT_ASSET === zeroAddress
+      ? 0n
+      : (balanceQuery.data
+          ?.filter((b) => b.asset.toLowerCase() === PAYMENT_ASSET.toLowerCase())
+          .reduce((acc, b) => acc + BigInt(b.available), 0n) ?? 0n);
 
   return {
     balances: balanceQuery.data,
