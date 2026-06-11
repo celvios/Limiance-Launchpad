@@ -391,18 +391,18 @@ export async function profileRoutes(fastify: FastifyInstance) {
           const token = tokenMap.get(h.tokenMint);
           if (!token) return null;
 
-          const currentPrice = computeSpotPrice(
-            token.curveType,
-            BigInt(token.curveParamA.toString()),
-            BigInt(token.curveParamB.toString()),
-            BigInt(token.curveParamC.toString()),
-            BigInt(token.currentSupply.toString()),
-            BigInt(token.supplyCap.toString())
-          );
+          // Compute spot price directly in USDT (floats) using the correct
+          // exponential bonding curve: pMin * (pMax/pMin)^(supply/GT)
+          // This matches the formula used in tokens.ts exactly.
+          const pMax = Number(token.curveParamA) / 1e18;
+          const pMin = Number(token.curveParamB) / 1e18;
+          const supply = Number(token.currentSupply) / 1e6; // human token units
+          const gt = Number(token.graduationThreshold) / 1e6; // human token units
 
-          // All math in human-readable floats — avoids BigInt overflow (e+22)
-          // currentPrice from computeSpotPrice is ×1e18 → divide to get USDT per token
-          const currentPriceUsdt = Number(currentPrice) / 1e18;
+          const currentPriceUsdt = (pMin > 0 && pMax > pMin && gt > 0)
+            ? pMin * Math.pow(pMax / pMin, supply / gt)
+            : pMax; // fallback
+
           // h.net is in raw token units (1e6 decimals)
           const tokenAmount = Number(h.net) / 1e6;
           // h.solSpent is in internal USDT units (1e6 decimals)
