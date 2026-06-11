@@ -97,6 +97,16 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
+      localization: {
+        priceFormatter: (p: number) => {
+          if (!p) return '0.00';
+          if (p < 0.000001) return p.toExponential(4);
+          if (p < 0.0001)   return p.toFixed(8);
+          if (p < 0.01)     return p.toFixed(6);
+          if (p < 1)        return p.toFixed(4);
+          return p.toFixed(2);
+        },
+      },
       layout: {
         background: { type: ColorType.Solid, color: '#0d0d14' },
         textColor: '#9ca3af',
@@ -141,6 +151,11 @@ export function PriceChart({ mint, currentPrice }: PriceChartProps) {
       borderVisible: true,
       wickUpColor:   '#22c55e',
       wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'price',
+        precision: 8,
+        minMove: 0.00000001,
+      },
     });
     candleRef.current = candle;
 
