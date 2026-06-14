@@ -25,6 +25,7 @@ const DeployBody = z.object({
 
 const FeedQuery = z.object({
   filter: z.enum(['new', 'trending', 'near_grad', 'graduated', 'following']).default('new'),
+  sort: z.enum(['marketCap', 'volume24h', 'age', 'holders']).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().min(1).max(50).default(20),
   wallet: z.string().optional(),
@@ -422,9 +423,14 @@ export async function tokenRoutes(app: FastifyInstance) {
     else where.status = 'active';
     if (parsed.data.cursor) where.createdAt = { lt: new Date(parsed.data.cursor) };
 
+    let orderBy: any = { createdAt: 'desc' };
+    if (parsed.data.sort === 'marketCap') orderBy = { currentSupply: 'desc' }; // approximation of MC
+    else if (parsed.data.sort === 'holders') orderBy = { holderCount: 'desc' };
+    else if (parsed.data.sort === 'volume24h') orderBy = { volume24h: 'desc' };
+
     const tokens = await prisma.token.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       take: parsed.data.limit + 1,
     });
     const page = tokens.slice(0, parsed.data.limit);

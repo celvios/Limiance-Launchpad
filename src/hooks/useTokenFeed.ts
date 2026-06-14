@@ -14,16 +14,18 @@ import type { TokenListResponse } from '@/lib/types';
 
 export function useTokenFeed() {
   const filter = useFeedStore((s) => s.activeFilter);
+  const sort = useFeedStore((s) => s.activeSort);
   const tags = useFeedStore((s) => s.activeTags);
 
   return useInfiniteQuery<TokenListResponse>({
-    queryKey: ['feed', filter, tags],
+    queryKey: ['feed', filter, sort, tags],
     queryFn: ({ pageParam }) =>
       fetchFeedTokens({
         filter,
+        sort,
         tags,
         cursor: pageParam as string | undefined,
-        limit: 6,
+        limit: 12,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     initialPageParam: undefined,

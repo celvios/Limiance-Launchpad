@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { SkeletonCard } from '@/components/ui/SkeletonCard';
-import { TokenCardCompact } from '@/components/token/TokenCardCompact';
+import { TokenCard } from '@/components/token/TokenCard';
 import { useExploreTokens } from '@/hooks/useExploreTokens';
 import { Button } from '@/components/ui/Button';
 import { BrandHeadline } from '@/components/ui/BrandHeadline';
@@ -284,7 +284,7 @@ export default function ExplorePage() {
             }}
           >
             {allTokens.map((token, i) => (
-              <TokenCardCompact key={token.mint} token={token} index={i} />
+              <TokenCard key={token.mint} {...token} index={i} />
             ))}
           </div>
 

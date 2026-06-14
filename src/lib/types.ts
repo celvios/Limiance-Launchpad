@@ -46,6 +46,7 @@ export type SortOption = 'marketCap' | 'volume24h' | 'age' | 'holders';
 
 export interface FeedQueryParams {
   filter: FeedFilter;
+  sort?: SortOption;
   tags: string[];
   cursor?: string;
   limit?: number;

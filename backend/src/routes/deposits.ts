@@ -807,4 +807,21 @@ export async function depositRoutes(app: FastifyInstance) {
       return reply.code(500).send({ error: e.message });
     }
   });
+
+  // ── FOR DEV ONLY: Reset specific user balance ──────────────────────────────────────
+  app.get('/api/dev/reset-balance/:wallet', async (req, reply) => {
+    try {
+      const { wallet } = req.params as { wallet: string };
+      const walletAddress = wallet.toLowerCase();
+      
+      await (prisma as any).userBalance.updateMany({
+        where: { walletAddress },
+        data: { available: 0n }
+      });
+      
+      return reply.send({ success: true, message: `Balance for ${walletAddress} reset to 0!` });
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
 }

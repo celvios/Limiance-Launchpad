@@ -175,10 +175,13 @@ export async function fetchFeedTokens(
   };
   const searchParams = new URLSearchParams({
     filter: filterMap[params.filter] ?? 'new',
+    ...(params.sort && { sort: params.sort }),
     ...(params.cursor && { cursor: params.cursor }),
     ...(params.limit && { limit: String(params.limit) }),
   });
-  params.tags.forEach((tag) => searchParams.append('tag', tag));
+  if (params.tags) {
+    params.tags.forEach((tag) => searchParams.append('tag', tag));
+  }
 
   const res = await fetch(`${API_BASE_URL}/tokens?${searchParams.toString()}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);

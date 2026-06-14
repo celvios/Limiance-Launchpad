@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { Settings, Award, MoreHorizontal, Wallet, ArrowLeft, Plus } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
-import { TokenCardCompact } from '@/components/token/TokenCardCompact';
+import { TokenCard } from '@/components/token/TokenCard';
 import { FollowButton } from '@/components/social/FollowButton';
 import { EditProfileModal } from '@/components/social/EditProfileModal';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time, LineSeries } from 'lightweight-charts';
@@ -233,7 +233,7 @@ function CreatedTab({ wallet }: { wallet: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {tokens.map((token, i) => (
-        <TokenCardCompact key={token.mint} token={token} index={i} />
+        <TokenCard key={token.mint} {...token} index={i} />
       ))}
     </div>
   );
