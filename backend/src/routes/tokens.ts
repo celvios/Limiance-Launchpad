@@ -21,7 +21,11 @@ const DeployBody = z.object({
     pMax: z.number().positive().optional(),
     k: z.number().optional(),
     midpoint: z.number().optional(),
-  }).passthrough(),
+  }).passthrough().superRefine((params, ctx) => {
+    if (params.pMin !== undefined && params.pMax !== undefined && params.pMax <= params.pMin) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pMax'], message: 'pMax must be greater than pMin' });
+    }
+  }),
 });
 
 const FeedQuery = z.object({

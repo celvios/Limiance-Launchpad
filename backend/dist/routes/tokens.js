@@ -21,7 +21,11 @@ const DeployBody = zod_1.z.object({
         pMax: zod_1.z.number().positive().optional(),
         k: zod_1.z.number().optional(),
         midpoint: zod_1.z.number().optional(),
-    }).passthrough(),
+    }).passthrough().superRefine((params, ctx) => {
+        if (params.pMin !== undefined && params.pMax !== undefined && params.pMax <= params.pMin) {
+            ctx.addIssue({ code: zod_1.z.ZodIssueCode.custom, path: ['pMax'], message: 'pMax must be greater than pMin' });
+        }
+    }),
 });
 const FeedQuery = zod_1.z.object({
     filter: zod_1.z.enum(['new', 'trending', 'near_grad', 'graduated', 'following']).default('new'),
