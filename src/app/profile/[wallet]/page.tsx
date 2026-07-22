@@ -252,13 +252,19 @@ function HoldingsTab({ wallet }: { wallet: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {holdings.map((h) => (
-        <div key={h.mint} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+        <div key={h.mint} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-5)', alignItems: 'flex-start' }}>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontFamily: 'var(--font-ui)', fontSize: '15px', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>
               ${h.symbol}
             </div>
             <div style={{ fontFamily: 'var(--font-ui)', fontSize: '13px', color: 'var(--text-muted)' }}>
               {formatNumber(h.amount)} tokens
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(120px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+              <HoldingMetric label="Entry price" value={`$${h.avgBuyPrice.toFixed(8)}`} />
+              <HoldingMetric label="Current price" value={`$${h.currentPrice.toFixed(8)}`} />
+              <HoldingMetric label="Cost basis" value={`$${h.costBasis.toFixed(2)}`} />
+              <HoldingMetric label="Gross value" value={`$${h.value.toFixed(2)}`} />
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -271,6 +277,15 @@ function HoldingsTab({ wallet }: { wallet: string }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function HoldingMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>{label}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-primary)' }}>{value}</div>
     </div>
   );
 }

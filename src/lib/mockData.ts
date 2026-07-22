@@ -568,6 +568,7 @@ export function getMockHoldings(walletAddress: string): HoldingData[] {
       avgBuyPrice: avgBuy,
       currentPrice: token.price,
       pnlPercent: pnl,
+      costBasis: amount * avgBuy,
       value: amount * token.price,
     });
   }

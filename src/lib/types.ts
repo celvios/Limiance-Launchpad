@@ -231,6 +231,7 @@ export interface HoldingData {
   avgBuyPrice: number;
   currentPrice: number;
   pnlPercent: number;
+  costBasis: number;
   value: number; // USDT
 }
 
