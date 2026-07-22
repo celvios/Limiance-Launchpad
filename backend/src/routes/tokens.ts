@@ -17,8 +17,8 @@ const DeployBody = z.object({
   initialBuyAmount: z.number().int().min(0).default(0),
   graduationThreshold: z.number().min(40).max(100),
   curveParams: z.object({
-    pMin: z.number().optional(),
-    pMax: z.number().optional(),
+    pMin: z.number().positive().optional(),
+    pMax: z.number().positive().optional(),
     k: z.number().optional(),
     midpoint: z.number().optional(),
   }).passthrough(),

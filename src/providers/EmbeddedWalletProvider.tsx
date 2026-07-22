@@ -28,7 +28,7 @@ const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(n
 export function EmbeddedWalletProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user, logout: privyLogout } = usePrivy();
   const { wallets } = useWallets();
-  const { connected, setEmbeddedSession } = useWallet();
+  const { isAuthenticated, setEmbeddedSession } = useWallet();
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -54,7 +54,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     // If we are missing dependencies, wait.
-    if (!ready || !authenticated || !user || connected || isLoading || sessionExpiryPending.current) return;
+    if (!ready || !authenticated || !user || isAuthenticated || isLoading || sessionExpiryPending.current) return;
 
     // Find the embedded wallet
     const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
@@ -63,9 +63,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     // If already have a valid cached session, restore it immediately without re-running Pimlico
     const cachedSession = getEmailSession(embeddedWallet.address);
     if (cachedSession) {
-      if (!connected) {
-        setEmbeddedSession(embeddedWallet.address, cachedSession.email, cachedSession.token);
-      }
+      setEmbeddedSession(embeddedWallet.address, cachedSession.email, cachedSession.token);
       if (!hasLoggedIn) setHasLoggedIn(true);
       return;
     }
@@ -165,7 +163,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     return () => {
       isMounted = false;
     };
-  }, [ready, authenticated, user, wallets, connected]); // Removed isLoading to prevent self-cancelling
+  }, [ready, authenticated, user, wallets, isAuthenticated, isLoading, hasLoggedIn, setEmbeddedSession, router]);
 
   return (
     <EmbeddedWalletContext.Provider

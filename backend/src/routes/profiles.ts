@@ -498,9 +498,12 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
           const holderTradeTime = latestHolderTrade.get(h.tokenMint) ?? 0;
           const hasExternalMarketMove = (latestExternalTrade.get(h.tokenMint) ?? 0) > holderTradeTime;
-          const value = hasExternalMarketMove
+          const executableValue = hasExternalMarketMove
             ? getExecutableSellValue(h.tokenAmount, supply, pMin, pMax, gt)
-            : h.costBasis;
+            : 0;
+          // A malformed legacy curve must never erase a real holder's cost basis.
+          // Keep the position at basis until a valid executable mark is available.
+          const value = executableValue > 0 ? executableValue : h.costBasis;
           const avgBuyPrice = h.tokenAmount > 0 ? h.costBasis / h.tokenAmount : 0;
           const currentPriceUsdt = h.tokenAmount > 0 ? value / h.tokenAmount : 0;
           const rawPnlPercent = h.costBasis > 0
