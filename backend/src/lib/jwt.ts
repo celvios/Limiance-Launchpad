@@ -8,7 +8,9 @@
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'change-me-in-production';
-const JWT_EXPIRY = '24h';
+// Keep the server token lifetime aligned with the browser session. A short
+// session forces a deliberate choice of login method after inactivity.
+const JWT_EXPIRY = '30m';
 
 export interface SessionPayload {
   wallet: string;

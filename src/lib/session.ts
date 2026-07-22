@@ -1,8 +1,11 @@
 import { API_BASE_URL } from './constants';
 
-const SESSION_TTL_MS = 24 * 60 * 60 * 1_000;
+const SESSION_TTL_MS = 30 * 60 * 1_000;
+const SESSION_VERSION = 2;
+const SESSION_STORAGE_PREFIX = 'limiance:jwt:';
 
 interface StoredSession {
+  version: number;
   walletAddress: string;
   email?: string;
   authType?: 'wallet' | 'email';
@@ -12,7 +15,7 @@ interface StoredSession {
 }
 
 function storageKey(walletAddress: string) {
-  return `limiance:jwt:${walletAddress.toLowerCase()}`;
+  return `${SESSION_STORAGE_PREFIX}${walletAddress.toLowerCase()}`;
 }
 
 function loadStoredSession(walletAddress: string): StoredSession | null {
@@ -20,7 +23,7 @@ function loadStoredSession(walletAddress: string): StoredSession | null {
     const raw = localStorage.getItem(storageKey(walletAddress));
     if (!raw) return null;
     const session: StoredSession = JSON.parse(raw);
-    if (Date.now() > session.expiresAt) {
+    if (session.version !== SESSION_VERSION || Date.now() > session.expiresAt) {
       localStorage.removeItem(storageKey(walletAddress));
       return null;
     }
@@ -36,6 +39,19 @@ function saveStoredSession(session: StoredSession) {
   } catch {}
 }
 
+export function getSessionExpiry(walletAddress: string): number | null {
+  return loadStoredSession(walletAddress)?.expiresAt ?? null;
+}
+
+export function clearAllSessions() {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(SESSION_STORAGE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
 export function saveEmailSession(session: {
   walletAddress: string;
   email: string;
@@ -44,6 +60,7 @@ export function saveEmailSession(session: {
   expiresAt?: number;
 }) {
   saveStoredSession({
+    version: SESSION_VERSION,
     walletAddress: session.walletAddress,
     email: session.email,
     authType: 'email',
@@ -112,7 +129,7 @@ export async function loginWithWallet(
   }
 
   const data = await res.json() as { token: string };
-  saveStoredSession({ walletAddress, token: data.token, expiresAt: timestamp + SESSION_TTL_MS });
+  saveStoredSession({ version: SESSION_VERSION, walletAddress, token: data.token, expiresAt: timestamp + SESSION_TTL_MS });
   return data.token;
 }
 

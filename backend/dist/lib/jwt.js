@@ -17,7 +17,9 @@ exports.authenticateSession = authenticateSession;
  */
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const JWT_SECRET = process.env.JWT_SECRET ?? 'change-me-in-production';
-const JWT_EXPIRY = '24h';
+// Keep the server token lifetime aligned with the browser session. A short
+// session forces a deliberate choice of login method after inactivity.
+const JWT_EXPIRY = '30m';
 /**
  * Issue a signed JWT for the given wallet address.
  */

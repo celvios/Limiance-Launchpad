@@ -8,6 +8,22 @@ const jwt_1 = require("../lib/jwt");
 // Validation schemas
 // ─────────────────────────────────────────────────────────────────────────────
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
+function getExponentialIntegral(supply, pMin, pMax, graduationThreshold) {
+    if (supply <= 0 || graduationThreshold <= 0 || pMin <= 0)
+        return 0;
+    if (pMax <= pMin)
+        return pMin * supply;
+    const ratio = pMax / pMin;
+    return (pMin * graduationThreshold / Math.log(ratio)) * (Math.pow(ratio, supply / graduationThreshold) - 1);
+}
+function getExecutableSellValue(tokenAmount, currentSupply, pMin, pMax, graduationThreshold) {
+    if (tokenAmount <= 0 || currentSupply <= 0)
+        return 0;
+    const amount = Math.min(tokenAmount, currentSupply);
+    const gross = getExponentialIntegral(currentSupply, pMin, pMax, graduationThreshold)
+        - getExponentialIntegral(currentSupply - amount, pMin, pMax, graduationThreshold);
+    return Math.max(0, gross * 0.95);
+}
 const CreateProfileBody = zod_1.z.object({
     walletAddress: zod_1.z.string().min(32).max(44),
     username: zod_1.z
@@ -311,66 +327,99 @@ async function profileRoutes(fastify) {
     // Holdings — net-positive token positions computed from trades
     fastify.get('/api/profiles/:wallet/holdings', async (req, reply) => {
         const { wallet } = req.params;
-        // Aggregate buys and sells per token
-        const [buys, sells] = await Promise.all([
-            prisma_1.prisma.trade.groupBy({
-                by: ['tokenMint'],
-                where: { walletAddress: wallet, type: 'buy' },
-                _sum: { amount: true, solAmount: true },
-            }),
-            prisma_1.prisma.trade.groupBy({
-                by: ['tokenMint'],
-                where: { walletAddress: wallet, type: 'sell' },
-                _sum: { amount: true },
-            }),
-        ]);
-        const sellMap = new Map(sells.map((s) => [s.tokenMint, s._sum.amount ?? BigInt(0)]));
-        // Net holdings (positive balance only)
-        const netHoldings = buys
-            .map((b) => {
-            const buyAmount = b._sum.amount ?? BigInt(0);
-            const sellAmount = sellMap.get(b.tokenMint) ?? BigInt(0);
-            const net = buyAmount - sellAmount;
-            const solSpent = b._sum.solAmount ?? BigInt(0);
-            return { tokenMint: b.tokenMint, net, solSpent, buyAmount };
-        })
-            .filter((h) => h.net > BigInt(0));
+        const normalizedWallet = wallet.toLowerCase();
+        const trades = await prisma_1.prisma.trade.findMany({
+            where: { walletAddress: normalizedWallet },
+            select: { tokenMint: true, type: true, amount: true, solAmount: true, timestamp: true, id: true },
+            orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
+        });
+        // Preserve the actual remaining cost basis using FIFO lots. Total buys are
+        // not a valid basis after a holder has made one or more sells.
+        const lotsByToken = new Map();
+        for (const trade of trades) {
+            const amount = Number(trade.amount) / 1e6;
+            if (trade.type === 'buy') {
+                const lots = lotsByToken.get(trade.tokenMint) ?? [];
+                lots.push({ amount, cost: Number(trade.solAmount) / 1e6 });
+                lotsByToken.set(trade.tokenMint, lots);
+                continue;
+            }
+            let remainingToSell = amount;
+            const lots = lotsByToken.get(trade.tokenMint) ?? [];
+            while (remainingToSell > 0 && lots.length > 0) {
+                const lot = lots[0];
+                const removed = Math.min(remainingToSell, lot.amount);
+                const fraction = removed / lot.amount;
+                lot.amount -= removed;
+                lot.cost -= lot.cost * fraction;
+                remainingToSell -= removed;
+                if (lot.amount <= 1e-9)
+                    lots.shift();
+            }
+        }
+        const netHoldings = Array.from(lotsByToken.entries())
+            .map(([tokenMint, lots]) => ({
+            tokenMint,
+            tokenAmount: lots.reduce((sum, lot) => sum + lot.amount, 0),
+            costBasis: lots.reduce((sum, lot) => sum + lot.cost, 0),
+        }))
+            .filter((holding) => holding.tokenAmount > 0);
         if (netHoldings.length === 0) {
             return reply.send({ holdings: [] });
         }
         // Fetch token metadata for held tokens
         const mints = netHoldings.map((h) => h.tokenMint);
-        const tokens = await prisma_1.prisma.token.findMany({ where: { mint: { in: mints } } });
+        const [tokens, externalTrades] = await Promise.all([
+            prisma_1.prisma.token.findMany({ where: { mint: { in: mints } } }),
+            prisma_1.prisma.trade.findMany({
+                where: { tokenMint: { in: mints }, walletAddress: { not: normalizedWallet } },
+                select: { tokenMint: true, timestamp: true },
+            }),
+        ]);
         const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
+        const latestExternalTrade = new Map();
+        for (const trade of externalTrades) {
+            const timestamp = trade.timestamp.getTime();
+            const previous = latestExternalTrade.get(trade.tokenMint) ?? 0;
+            if (timestamp > previous)
+                latestExternalTrade.set(trade.tokenMint, timestamp);
+        }
+        const latestHolderTrade = new Map();
+        for (const trade of trades) {
+            const timestamp = trade.timestamp.getTime();
+            const previous = latestHolderTrade.get(trade.tokenMint) ?? 0;
+            if (timestamp > previous)
+                latestHolderTrade.set(trade.tokenMint, timestamp);
+        }
         const holdings = netHoldings
             .map((h) => {
             const token = tokenMap.get(h.tokenMint);
             if (!token)
                 return null;
-            // Compute spot price directly in USDT (floats) using the correct
-            // exponential bonding curve: pMin * (pMax/pMin)^(supply/GT)
-            // This matches the formula used in tokens.ts exactly.
+            // A holder's own buy shifts the curve, but that is not market profit.
+            // Until another wallet trades after the holder's latest trade, hold the
+            // portfolio at remaining cost basis. The sell panel remains the source
+            // of the fee-inclusive executable payout.
             const pMax = Number(token.curveParamA) / 1e18;
             const pMin = Number(token.curveParamB) / 1e18;
             const supply = Number(token.currentSupply) / 1e6; // human token units
             const gt = Number(token.graduationThreshold) / 1e6; // human token units
-            const currentPriceUsdt = (pMin > 0 && pMax > pMin && gt > 0)
-                ? pMin * Math.pow(pMax / pMin, supply / gt)
-                : pMax; // fallback
-            // h.net is in raw token units (1e6 decimals)
-            const tokenAmount = Number(h.net) / 1e6;
-            // h.solSpent is in internal USDT units (1e6 decimals)
-            const usdtSpent = Number(h.solSpent) / 1e6;
-            const avgBuyPrice = tokenAmount > 0 ? usdtSpent / tokenAmount : 0;
-            const value = tokenAmount * currentPriceUsdt;
-            const pnlPercent = avgBuyPrice > 0
-                ? ((currentPriceUsdt - avgBuyPrice) / avgBuyPrice) * 100
+            const holderTradeTime = latestHolderTrade.get(h.tokenMint) ?? 0;
+            const hasExternalMarketMove = (latestExternalTrade.get(h.tokenMint) ?? 0) > holderTradeTime;
+            const value = hasExternalMarketMove
+                ? getExecutableSellValue(h.tokenAmount, supply, pMin, pMax, gt)
+                : h.costBasis;
+            const avgBuyPrice = h.tokenAmount > 0 ? h.costBasis / h.tokenAmount : 0;
+            const currentPriceUsdt = h.tokenAmount > 0 ? value / h.tokenAmount : 0;
+            const rawPnlPercent = h.costBasis > 0
+                ? ((value - h.costBasis) / h.costBasis) * 100
                 : 0;
+            const pnlPercent = Math.abs(rawPnlPercent) < 0.005 ? 0 : rawPnlPercent;
             return {
                 mint: token.mint,
                 symbol: token.symbol,
                 name: token.name,
-                amount: Math.round(tokenAmount * 1e6) / 1e6,
+                amount: Math.round(h.tokenAmount * 1e6) / 1e6,
                 avgBuyPrice: Math.round(avgBuyPrice * 1e8) / 1e8,
                 currentPrice: Math.round(currentPriceUsdt * 1e8) / 1e8,
                 pnlPercent: Math.round(pnlPercent * 100) / 100,

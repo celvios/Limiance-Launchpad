@@ -5,9 +5,6 @@ import { X, Wallet, ShieldCheck, AlertTriangle, LogIn, CheckCircle, LogOut, Mail
 import { useUIStore } from '@/store/uiStore';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { BSC_CHAIN_ID } from '@/lib/constants';
-import { requestEmailOtp } from '@/lib/session';
-import { embeddedWalletConfigStatus } from '@/lib/embeddedWallet';
-import { useEmbeddedWallet } from '@/providers/EmbeddedWalletProvider';
 import { usePrivy } from '@privy-io/react-auth';
 
 export function WalletDrawer() {
@@ -277,7 +274,7 @@ export function WalletDrawer() {
                   if (privyAuthenticated) {
                     try {
                       await privyLogout();
-                    } catch (e) {}
+                    } catch {}
                   }
                 }}
                 style={{
@@ -300,8 +297,9 @@ export function WalletDrawer() {
             </div>
           )}
 
-          {/* Email login */}
-          {!connected && (
+          {/* Always offer email while signed out. Browser wallets may be exposed
+              by the extension after expiry, but that must not force a method. */}
+          {!isAuthenticated && (
             <>
               <div style={{ textAlign: 'center', margin: 'var(--space-2) 0' }}>
                 <span style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-muted)' }}>— OR —</span>
@@ -309,10 +307,11 @@ export function WalletDrawer() {
               <button
                 onClick={async () => {
                   closeDrawer();
+                  logout();
                   if (privyAuthenticated) {
                     try {
                       await privyLogout();
-                    } catch (e) {}
+                    } catch {}
                   }
                   privyLogin();
                 }}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useWallet } from './BscWalletProvider';
 import { getPimlicoSmartAccount } from '@/lib/pimlico';
@@ -26,7 +26,7 @@ type EmbeddedWalletContextValue = {
 const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(null);
 
 export function EmbeddedWalletProvider({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, user } = usePrivy();
+  const { ready, authenticated, user, logout: privyLogout } = usePrivy();
   const { wallets } = useWallets();
   const { connected, setEmbeddedSession } = useWallet();
   const router = useRouter();
@@ -37,10 +37,24 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
   
   const [smartAccountClient, setSmartAccountClient] = useState<SmartAccountClient | null>(null);
   const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
+  const sessionExpiryPending = useRef(false);
+
+  useEffect(() => {
+    const handleSessionExpiry = () => {
+      sessionExpiryPending.current = true;
+      void privyLogout().catch((err) => console.error('Privy logout after session expiry failed:', err));
+    };
+    window.addEventListener('limiance:session-expired', handleSessionExpiry);
+    return () => window.removeEventListener('limiance:session-expired', handleSessionExpiry);
+  }, [privyLogout]);
+
+  useEffect(() => {
+    if (!authenticated) sessionExpiryPending.current = false;
+  }, [authenticated]);
 
   useEffect(() => {
     // If we are missing dependencies, wait.
-    if (!ready || !authenticated || !user || connected || isLoading) return;
+    if (!ready || !authenticated || !user || connected || isLoading || sessionExpiryPending.current) return;
 
     // Find the embedded wallet
     const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');

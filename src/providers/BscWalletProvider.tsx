@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { BSC_CHAIN_ID, BSC_RPC_URL, GAS_CURRENCY } from '@/lib/constants';
-import { loginWithWallet, getAuthToken, clearSession, verifyEmailOtp } from '@/lib/session';
+import { loginWithWallet, getAuthToken, getSessionExpiry, clearAllSessions, clearSession, verifyEmailOtp } from '@/lib/session';
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -73,7 +73,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       params: [text, address],
     })) as string;
     return signature;
-  }, [address]);
+  }, []);
 
   // ── Auth functions ──
   const login = useCallback(async () => {
@@ -96,7 +96,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
   }, [address, signMessage]);
 
   const logout = useCallback(() => {
-    if (address) clearSession(address);
+    clearAllSessions();
     setToken(null);
     setAddress(null);
     setEmail(null);
@@ -122,7 +122,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       if (cached) setToken(cached);
     }
     setChainId(Number.parseInt(rawChainId, 16));
-  }, []);
+  }, [address]);
 
   const connect = useCallback(async () => {
     if (!window.ethereum) {
@@ -206,6 +206,29 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!address || !token) return;
+
+    const expiresAt = getSessionExpiry(address);
+    if (!expiresAt) return;
+
+    const expire = () => {
+      clearAllSessions();
+      setToken(null);
+      setAddress(null);
+      setEmail(null);
+      setAuthType(null);
+      window.dispatchEvent(new Event('limiance:session-expired'));
+    };
+    const delay = expiresAt - Date.now();
+    if (delay <= 0) {
+      expire();
+      return;
+    }
+    const timeout = window.setTimeout(expire, delay);
+    return () => window.clearTimeout(timeout);
+  }, [address, token]);
 
   useEffect(() => {
     if (!window.ethereum?.on) return;
