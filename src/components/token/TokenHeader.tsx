@@ -1,19 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { Eye, Share2, Users } from 'lucide-react';
+import { Eye, Flag, Share2, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { WatchlistButton } from '@/components/social/WatchlistButton';
 import { formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import type { TokenDetail } from '@/lib/types';
+import { ReportModal } from '@/components/social/ReportModal';
 
 interface TokenHeaderProps {
   token: TokenDetail;
 }
 
 export function TokenHeader({ token }: TokenHeaderProps) {
+  const [isReportOpen, setIsReportOpen] = useState(false);
   return (
     <div>
       {/* Banner */}
@@ -186,6 +188,14 @@ export function TokenHeader({ token }: TokenHeaderProps) {
           </button>
 
           <WatchlistButton mint={token.mint} size={16} />
+          <button
+            onClick={() => setIsReportOpen(true)}
+            aria-label="Report token"
+            title="Report token"
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-1)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+          >
+            <Flag size={16} />
+          </button>
         </div>
 
         {/* Tags */}
@@ -211,6 +221,7 @@ export function TokenHeader({ token }: TokenHeaderProps) {
           </Badge>
         </div>
       </div>
+      <ReportModal open={isReportOpen} onClose={() => setIsReportOpen(false)} targetType="token" targetId={token.mint} targetLabel="token" />
     </div>
   );
 }

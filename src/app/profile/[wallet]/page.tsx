@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useWallet } from '@/providers/BscWalletProvider';
-import { Settings, Award, MoreHorizontal, Wallet, ArrowLeft, Plus } from 'lucide-react';
+import { Settings, Award, Flag, Wallet, ArrowLeft, Plus } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { TokenCard } from '@/components/token/TokenCard';
 import { FollowButton } from '@/components/social/FollowButton';
@@ -21,6 +21,7 @@ import {
 import { useUIStore } from '@/store/uiStore';
 import { formatAddress, formatNumber } from '@/lib/format';
 import type { ProfileTab } from '@/lib/types';
+import { ReportModal } from '@/components/social/ReportModal';
 
 const PROFILE_TABS = [
   { id: 'created', label: 'Created' },
@@ -32,6 +33,7 @@ export default function ProfilePage() {
   const params = useParams();
   const wallet = params.wallet as string;
   const [activeTab, setActiveTab] = useState<ProfileTab | 'created' | 'holdings' | 'stats'>('created');
+  const [isReportOpen, setIsReportOpen] = useState(false);
   const { address } = useWallet();
   const { openModal } = useUIStore();
 
@@ -107,8 +109,13 @@ export default function ProfilePage() {
                 <Settings size={20} />
               </button>
             )}
-            <button style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              <MoreHorizontal size={24} />
+            <button
+              onClick={() => setIsReportOpen(true)}
+              aria-label="Report profile"
+              title="Report profile"
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            >
+              <Flag size={20} />
             </button>
           </div>
         </div>
@@ -214,6 +221,9 @@ export default function ProfilePage() {
           currentBio={profile.bio}
           currentProfilePicUri={(profile as any).profilePicUri ?? null}
         />
+      )}
+      {!isOwnProfile && (
+        <ReportModal open={isReportOpen} onClose={() => setIsReportOpen(false)} targetType="profile" targetId={wallet} targetLabel="profile" />
       )}
     </div>
   );

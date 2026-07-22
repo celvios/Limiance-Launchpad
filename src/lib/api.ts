@@ -24,6 +24,8 @@ import type {
   ExploreQueryParams,
   ExploreFilter,
   SortOption,
+  ReportReason,
+  ReportTargetType,
 } from './types';
 
 /* ── Toggle ── */
@@ -733,6 +735,34 @@ export async function fetchProfileNetworth(
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   const data = await res.json() as { networth: { time: number; value: number }[] };
   return data.networth;
+}
+
+export async function submitReport(params: {
+  reporterWallet: string;
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: ReportReason;
+  details?: string;
+  token: string | null;
+}): Promise<{ reportId: string; reportCount: number; priority: string }> {
+  if (USE_MOCK) {
+    await delay(250);
+    return { reportId: `report-${Date.now()}`, reportCount: 1, priority: 'low' };
+  }
+  const res = await authFetch(`${API_BASE_URL}/reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      reporterWallet: params.reporterWallet,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      reason: params.reason,
+      details: params.details,
+    }),
+  }, params.token);
+  const data = await res.json().catch(() => ({})) as { error?: string; code?: string; reportId?: string; reportCount?: number; priority?: string };
+  if (!res.ok) throw new Error(data.error ?? `Report failed: ${res.status}`);
+  return { reportId: data.reportId ?? '', reportCount: data.reportCount ?? 1, priority: data.priority ?? 'low' };
 }
 
 export async function fetchHomeActivity(limit = 24): Promise<{ activities: HomeActivity[] }> {

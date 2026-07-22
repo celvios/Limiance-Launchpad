@@ -253,6 +253,19 @@ export interface HoldingData {
   value: number; // USDT
 }
 
+export type ReportTargetType = 'comment' | 'token' | 'profile';
+export type ReportReason =
+  | 'spam'
+  | 'scam'
+  | 'harassment'
+  | 'hate_or_abuse'
+  | 'fraud_or_impersonation'
+  | 'offensive_content'
+  | 'market_manipulation'
+  | 'inappropriate_content'
+  | 'duplicate'
+  | 'other';
+
 export interface ProfileHoldingsResponse {
   holdings: HoldingData[];
 }

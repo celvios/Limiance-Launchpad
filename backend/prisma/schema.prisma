@@ -300,6 +300,27 @@ model CommentReaction {
   @@index([walletAddress])
 }
 
+// User-submitted moderation reports for comments, tokens, and profiles.
+model Report {
+  id             String   @id @default(cuid())
+  reporterWallet String
+  targetType     String   // comment | token | profile
+  targetId       String   // comment id, token mint, or profile wallet
+  reason         String
+  details        String?  @db.Text
+  status         String   @default("open") // open | reviewing | resolved | dismissed
+  resolution     String?
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([reporterWallet, targetType, targetId])
+  @@index([targetType, targetId, status])
+  @@index([status, createdAt])
+  @@index([reporterWallet, createdAt])
+}
+
 model IndexerState {
   id                 String   @id // e.g. "deposit_indexer"
   lastBlockProcessed BigInt

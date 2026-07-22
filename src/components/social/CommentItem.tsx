@@ -2,10 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Heart, MessageCircle, ThumbsDown } from 'lucide-react';
+import { Flag, Heart, MessageCircle, ThumbsDown } from 'lucide-react';
 import { formatAddress, formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import type { Comment } from '@/lib/types';
+import { ReportModal } from '@/components/social/ReportModal';
 
 interface CommentItemProps {
   comment: Comment;
@@ -19,6 +20,7 @@ interface CommentItemProps {
 export function CommentItem({ comment, canReply, onReply, onReact, depth = 0, replyMode = 'inline' }: CommentItemProps) {
   const [isReplying, setIsReplying] = React.useState(false);
   const [replyText, setReplyText] = React.useState('');
+  const [isReportOpen, setIsReportOpen] = React.useState(false);
   const displayName = comment.walletHandle
     ? `@${comment.walletHandle}`
     : formatAddress(comment.walletAddress);
@@ -220,6 +222,15 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0, re
             <MessageCircle size={12} />
             Reply
           </button>
+          <button
+            onClick={() => setIsReportOpen(true)}
+            aria-label="Report comment"
+            title="Report comment"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px var(--space-2)', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 12 }}
+          >
+            <Flag size={12} />
+            Report
+          </button>
         </div>
 
         {isReplying && (
@@ -279,6 +290,7 @@ export function CommentItem({ comment, canReply, onReply, onReact, depth = 0, re
           </div>
         )}
       </div>
+      <ReportModal open={isReportOpen} onClose={() => setIsReportOpen(false)} targetType="comment" targetId={comment.id} targetLabel="comment" />
     </div>
       {comment.replies?.map((reply) => (
         <CommentItem
