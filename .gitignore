@@ -56,3 +56,7 @@ AGENTS.md
 
 # Legacy frontend scaffold — root is the real Next.js app
 launchpad-frontend/
+
+# Standalone admin frontend build output
+admin-frontend/.next/
+admin-frontend/node_modules/
