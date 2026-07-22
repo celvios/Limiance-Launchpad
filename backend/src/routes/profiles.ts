@@ -465,15 +465,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
         prisma.token.findMany({ where: { mint: { in: mints } } }),
         prisma.trade.findMany({
           where: { tokenMint: { in: mints }, walletAddress: { not: normalizedWallet } },
-          select: { tokenMint: true, timestamp: true },
+          select: { tokenMint: true, timestamp: true, pricePerToken: true },
         }),
       ]);
       const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
-      const latestExternalTrade = new Map<string, number>();
+      const latestExternalTrade = new Map<string, { timestamp: number; price: number }>();
       for (const trade of externalTrades) {
         const timestamp = trade.timestamp.getTime();
-        const previous = latestExternalTrade.get(trade.tokenMint) ?? 0;
-        if (timestamp > previous) latestExternalTrade.set(trade.tokenMint, timestamp);
+        const previous = latestExternalTrade.get(trade.tokenMint);
+        if (!previous || timestamp > previous.timestamp) {
+          const rawPrice = Number(trade.pricePerToken);
+          const price = rawPrice > 1e10 ? rawPrice / 1e18 : rawPrice / 1e6;
+          latestExternalTrade.set(trade.tokenMint, { timestamp, price });
+        }
       }
       const latestHolderTrade = new Map<string, number>();
       for (const trade of trades) {
@@ -497,13 +501,20 @@ export async function profileRoutes(fastify: FastifyInstance) {
           const gt = Number(token.graduationThreshold) / 1e6; // human token units
 
           const holderTradeTime = latestHolderTrade.get(h.tokenMint) ?? 0;
-          const hasExternalMarketMove = (latestExternalTrade.get(h.tokenMint) ?? 0) > holderTradeTime;
-          const executableValue = hasExternalMarketMove
+          const latestExternal = latestExternalTrade.get(h.tokenMint);
+          const hasExternalMarketMove = (latestExternal?.timestamp ?? 0) > holderTradeTime;
+          const curveValue = hasExternalMarketMove
             ? getExecutableSellValue(h.tokenAmount, supply, pMin, pMax, gt)
+            : 0;
+          // Older trades may belong to tokens whose curve parameters were stored
+          // incorrectly. Use the latest external execution price as a temporary
+          // mark until the curve record is repaired, rather than returning zero.
+          const tradeMarkValue = hasExternalMarketMove && latestExternal && latestExternal.price > 0
+            ? h.tokenAmount * latestExternal.price * 0.95
             : 0;
           // A malformed legacy curve must never erase a real holder's cost basis.
           // Keep the position at basis until a valid executable mark is available.
-          const value = executableValue > 0 ? executableValue : h.costBasis;
+          const value = curveValue > 0 ? curveValue : tradeMarkValue > 0 ? tradeMarkValue : h.costBasis;
           const avgBuyPrice = h.tokenAmount > 0 ? h.costBasis / h.tokenAmount : 0;
           const currentPriceUsdt = h.tokenAmount > 0 ? value / h.tokenAmount : 0;
           const rawPnlPercent = h.costBasis > 0
