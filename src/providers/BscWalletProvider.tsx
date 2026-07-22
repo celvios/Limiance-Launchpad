@@ -73,7 +73,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       params: [text, address],
     })) as string;
     return signature;
-  }, []);
+  }, [address]);
 
   // ── Auth functions ──
   const login = useCallback(async () => {
@@ -101,7 +101,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     setAddress(null);
     setEmail(null);
     setAuthType(null);
-  }, [address]);
+  }, []);
 
   // ── Wallet functions ──
   const refresh = useCallback(async () => {
@@ -122,7 +122,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
       if (cached) setToken(cached);
     }
     setChainId(Number.parseInt(rawChainId, 16));
-  }, [address]);
+  }, []);
 
   const connect = useCallback(async () => {
     if (!window.ethereum) {
@@ -151,7 +151,7 @@ export function BscWalletProvider({ children }: { children: React.ReactNode }) {
     setChainId(BSC_CHAIN_ID);
     setEmail(null);
     setAuthType(null);
-  }, []);
+  }, [address]);
 
   const connectEmail = useCallback(async (
     nextEmail: string,
