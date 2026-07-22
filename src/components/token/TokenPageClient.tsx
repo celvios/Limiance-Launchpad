@@ -3,6 +3,7 @@
 import React from 'react';
 import { useParams } from 'next/navigation';
 import { useTokenDetail } from '@/hooks/useTokenDetail';
+import { useTokenPrice } from '@/hooks/useTokenPrice';
 import { TokenHeader } from '@/components/token/TokenHeader';
 import { PriceChart } from '@/components/token/PriceChart';
 import { SupplyBar } from '@/components/token/SupplyBar';
@@ -16,6 +17,7 @@ export function TokenPageClient() {
   const params = useParams();
   const mint = params.mint as string;
   const { data: token, isLoading, isError } = useTokenDetail(mint);
+  const { data: livePrice } = useTokenPrice(mint);
 
   // Wire graduation handler for this token
   useGraduationHandler(mint);
@@ -60,8 +62,9 @@ export function TokenPageClient() {
     );
   }
 
-  const supplyPercent = (token.currentSupply / token.graduationThreshold) * 100;
-  const isGraduated = token.status === 'graduated';
+  const displayToken = livePrice ? { ...token, ...livePrice } : token;
+  const supplyPercent = (displayToken.currentSupply / displayToken.graduationThreshold) * 100;
+  const isGraduated = displayToken.status === 'graduated';
   const isNearGrad = supplyPercent >= 75 && !isGraduated;
 
   return (
@@ -85,20 +88,20 @@ export function TokenPageClient() {
             minWidth: 0,
           }}
         >
-          <TokenHeader token={token} />
+          <TokenHeader token={displayToken} />
 
           <GraduationBanner
             isGraduated={isGraduated}
             isNearGrad={isNearGrad}
             supplyPercent={supplyPercent}
-            dexPoolAddress={token.dexPoolAddress}
+            dexPoolAddress={displayToken.dexPoolAddress}
           />
 
-          <PriceChart mint={mint} currentPrice={token.price} />
+          <PriceChart mint={mint} currentPrice={displayToken.price} />
 
           <SupplyBar
-            currentSupply={token.currentSupply}
-            graduationThreshold={token.graduationThreshold}
+            currentSupply={displayToken.currentSupply}
+            graduationThreshold={displayToken.graduationThreshold}
             isGraduated={isGraduated}
           />
 
@@ -130,7 +133,7 @@ export function TokenPageClient() {
                 lineHeight: 1.6,
               }}
             >
-              {token.description}
+              {displayToken.description}
             </p>
           </div>
 
@@ -162,12 +165,12 @@ export function TokenPageClient() {
               }}
             >
               {[
-                { label: 'Curve Type', value: token.curveType.toUpperCase() },
-                { label: 'Total Supply', value: token.totalSupply >= 1e9 ? `${(token.totalSupply / 1e9).toFixed(0)}B` : token.totalSupply >= 1e6 ? `${(token.totalSupply / 1e6).toFixed(0)}M` : `${(token.totalSupply / 1000).toFixed(0)}K` },
-                { label: 'Holders', value: token.holderCount.toLocaleString() },
-                { label: '24h Volume', value: `${token.volume24h.toLocaleString()} USDT` },
-                { label: 'Total Raised', value: `${token.totalRaised.toFixed(1)} USDT` },
-                { label: 'Platform Fee', value: `${token.platformFee}%` },
+                { label: 'Curve Type', value: displayToken.curveType.toUpperCase() },
+                { label: 'Total Supply', value: displayToken.totalSupply >= 1e9 ? `${(displayToken.totalSupply / 1e9).toFixed(0)}B` : displayToken.totalSupply >= 1e6 ? `${(displayToken.totalSupply / 1e6).toFixed(0)}M` : `${(displayToken.totalSupply / 1000).toFixed(0)}K` },
+                { label: 'Holders', value: displayToken.holderCount.toLocaleString() },
+                { label: '24h Volume', value: `${displayToken.volume24h.toLocaleString()} USDT` },
+                { label: 'Total Raised', value: `${displayToken.totalRaised.toFixed(1)} USDT` },
+                { label: 'Platform Fee', value: `${displayToken.platformFee}%` },
               ].map((item) => (
                 <div key={item.label}>
                   <div
@@ -206,7 +209,7 @@ export function TokenPageClient() {
             top: 'var(--space-4)',
           }}
         >
-          <TradePanel token={token} />
+          <TradePanel token={displayToken} />
           
           <div style={{ marginTop: 'var(--space-4)' }}>
             <OrderBook mint={mint} />
@@ -220,8 +223,8 @@ export function TokenPageClient() {
                   new CustomEvent('token-graduation', {
                     detail: {
                       tokenMint: mint,
-                      tokenSymbol: token.symbol,
-                      dexPoolAddress: token.dexPoolAddress ?? 'devtest',
+                      tokenSymbol: displayToken.symbol,
+                      dexPoolAddress: displayToken.dexPoolAddress ?? 'devtest',
                       timestamp: Date.now(),
                     },
                   })

@@ -22,7 +22,7 @@ export interface UseInitializeTokenReturn {
 }
 
 export function useInitializeToken(): UseInitializeTokenReturn {
-  const { address } = useWallet();
+  const { address, token } = useWallet();
   const [state, setState] = useState<DeployState>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +33,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
 
   const deployToken = useCallback(
     async (formData: CreateTokenFormData): Promise<DeployResult> => {
-      if (!address) throw new Error('BSC wallet not connected');
+      if (!address || !token) throw new Error('BSC wallet not connected');
       setState('preparing');
       setError(null);
 
@@ -41,7 +41,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
         setState('confirming');
         const res = await fetch(`${API_BASE_URL}/tokens/deploy`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             creator: address,
             name: formData.name,
@@ -69,7 +69,7 @@ export function useInitializeToken(): UseInitializeTokenReturn {
         throw err;
       }
     },
-    [address],
+    [address, token],
   );
 
   return { deployToken, state, error, reset };

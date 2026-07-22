@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
 import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT, PAYMENT_ASSET } from '../services/bsc';
+import { authenticateSession } from '../lib/jwt';
 import { broadcast } from '../ws/server';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -186,6 +187,33 @@ function estimateBuyTokensForPayment(
   return Math.floor(Math.min(tokensOut, remaining));
 }
 
+function getExponentialCostBetween(
+  fromSupply: number,
+  toSupply: number,
+  pMin: number,
+  pMax: number,
+  graduationThreshold: number,
+): number {
+  if (toSupply <= fromSupply) return 0;
+  return (
+    getExponentialIntegral(toSupply, pMin, pMax, graduationThreshold) -
+    getExponentialIntegral(fromSupply, pMin, pMax, graduationThreshold)
+  );
+}
+
+function estimateSellUsdtForTokens(
+  tokenAmount: number,
+  currentSupply: number,
+  pMin: number,
+  pMax: number,
+  graduationThreshold: number,
+): number {
+  if (tokenAmount <= 0 || tokenAmount > currentSupply) return 0;
+  const fromSupply = Math.max(0, currentSupply - tokenAmount);
+  const gross = getExponentialCostBetween(fromSupply, currentSupply, pMin, pMax, graduationThreshold);
+  return gross * 0.95;
+}
+
 async function serializeToken(token: any, creatorHandle?: string | null, counts: TokenSocialCounts = emptyCounts()) {
   const tokenAddress = token.tokenAddress ?? token.mint;
   const supply = Number(token.currentSupply.toString());
@@ -252,6 +280,11 @@ async function serializeToken(token: any, creatorHandle?: string | null, counts:
 
 export async function tokenRoutes(app: FastifyInstance) {
   app.post('/api/tokens/deploy', async (req, reply) => {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
+      return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
     const parsed = DeployBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
@@ -259,7 +292,10 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     try {
       const body = parsed.data;
-      const creator = normalizeAddress(body.creator);
+      const creator = normalizeAddress(session.wallet);
+      if (normalizeAddress(body.creator) !== creator) {
+        return reply.code(403).send({ error: 'Creator wallet does not match session', code: 'FORBIDDEN' });
+      }
       const tokenAddress = pseudoAddress(`${creator}:${body.symbol}:${Date.now()}`);
       const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
       const supplyCap = BigInt(body.totalSupply);
@@ -476,8 +512,8 @@ export async function tokenRoutes(app: FastifyInstance) {
 
   app.post('/api/tokens/:address/trade', async (req, reply) => {
     // Authenticated Balance Trade — fully backend-tracked (no on-chain tx per trade)
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    const session = authenticateSession(req.headers.authorization);
+    if (!session?.wallet) {
       return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
 
@@ -495,11 +531,14 @@ export async function tokenRoutes(app: FastifyInstance) {
 
     const { wallet, type, amountUsdt } = parsed.data;
     const userWallet = normalizeAddress(wallet)!;
+    if (normalizeAddress(session.wallet) !== userWallet) {
+      return reply.code(403).send({ error: 'Wallet does not match session', code: 'FORBIDDEN' });
+    }
     const { address: tokenAddressParam } = req.params as { address: string };
     const tokenAddress = tokenAddressParam.toLowerCase();
 
     // USDT: 6 decimals for DB storage.
-    const amountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
+    const requestedAmountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
@@ -533,17 +572,21 @@ export async function tokenRoutes(app: FastifyInstance) {
         //   amountTokensWei = 6-decimal units for UserTokenBalance.
         const amountTokensRaw = BigInt(Math.round(resolvedAmountTokens));
         const amountTokensWei = BigInt(Math.round(resolvedAmountTokens * 1e6));
+        const trustedAmountUsdt = type === 'buy'
+          ? amountUsdt
+          : estimateSellUsdtForTokens(resolvedAmountTokens, currentSupply, pMin, pMax, graduationThreshold);
+        const trustedAmountUsdtWei = BigInt(Math.floor(trustedAmountUsdt * 1e6));
 
         if (type === 'buy') {
           // ── BUY ──────────────────────────────────────────────────────────────
-          if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
+          if (!usdtBalance || usdtBalance.available < requestedAmountUsdtWei) {
             throw new Error('Insufficient USDT balance — please deposit more');
           }
 
           // Deduct USDT
           await tx.userBalance.update({
             where: { id: usdtBalance.id },
-            data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
+            data: { available: { decrement: requestedAmountUsdtWei }, consumed: { increment: requestedAmountUsdtWei } },
           });
 
           // Credit token balance (6-decimal scaled for UserTokenBalance)
@@ -581,6 +624,9 @@ export async function tokenRoutes(app: FastifyInstance) {
           if (!tokenBalance || tokenBalance.amount < amountTokensWei) {
             throw new Error('Insufficient token balance to sell');
           }
+          if (trustedAmountUsdtWei <= 0n) {
+            throw new Error('Sell amount is too small for the current curve price');
+          }
 
           // Deduct token balance
           await tx.userTokenBalance.update({
@@ -592,7 +638,7 @@ export async function tokenRoutes(app: FastifyInstance) {
           if (usdtBalance) {
             await tx.userBalance.update({
               where: { id: usdtBalance.id },
-              data: { available: { increment: amountUsdtWei } },
+              data: { available: { increment: trustedAmountUsdtWei } },
             });
           } else {
             await tx.userBalance.create({
@@ -600,7 +646,7 @@ export async function tokenRoutes(app: FastifyInstance) {
                 walletAddress: userWallet,
                 chainId: BSC_CHAIN_ID,
                 asset: PAYMENT_ASSET,
-                available: amountUsdtWei,
+                available: trustedAmountUsdtWei,
               },
             });
           }
@@ -621,10 +667,10 @@ export async function tokenRoutes(app: FastifyInstance) {
             walletAddress: userWallet,
             type,
             amount: amountTokensWei,
-            solAmount: amountUsdtWei,
-            paymentAmount: amountUsdtWei,
+            solAmount: type === 'buy' ? requestedAmountUsdtWei : trustedAmountUsdtWei,
+            paymentAmount: type === 'buy' ? requestedAmountUsdtWei : trustedAmountUsdtWei,
             paymentAsset: PAYMENT_ASSET,
-            pricePerToken: resolvedAmountTokens > 0 ? BigInt(Math.round((amountUsdt / resolvedAmountTokens) * 1e18)) : 0n,
+            pricePerToken: resolvedAmountTokens > 0 ? BigInt(Math.round((trustedAmountUsdt / resolvedAmountTokens) * 1e18)) : 0n,
             txSignature: `internal-${type}-${Date.now()}`,
             timestamp: new Date(),
             isWhale: amountUsdt >= 1000,

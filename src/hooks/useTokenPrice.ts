@@ -28,11 +28,9 @@ export function useTokenPrice(mint: string) {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Check if there was a recent trade for this token
+  // Check if the global ticker has seen this token recently enough to justify faster polling.
   const recentTradeForToken = trades.find((t) => t.tokenMint === mint);
-  const hasRecentTrade = recentTradeForToken
-    ? Date.now() - recentTradeForToken.timestamp < 300_000 // 5 minutes
-    : false;
+  const hasRecentTrade = Boolean(recentTradeForToken);
 
   // Poll interval depends on activity
   const refetchInterval = hasRecentTrade ? 5_000 : 15_000;
@@ -86,6 +84,7 @@ export function useTokenPrice(mint: string) {
 
     // Also invalidate to get real data on next poll
     queryClient.invalidateQueries({ queryKey: ['token-detail', mint] });
+    queryClient.invalidateQueries({ queryKey: ['chart-data', mint] });
   }, [mint, recentTradeForToken, queryClient]);
 
   useEffect(() => {

@@ -55,8 +55,27 @@ async function creditDepositTransfer(txHash: string, logIndex: number, toAddress
 
   console.log(`[Indexer] Detected deposit! ${amountWei} USDT to Vault ${normalizedToAddress} (User: ${vault.userWallet})`);
 
+  let didCredit = false;
   try {
     await prisma.$transaction(async (tx) => {
+      const creditedAggregate = await tx.deposit.aggregate({
+        where: {
+          vaultAddress: normalizedToAddress,
+          credited: true,
+        },
+        _sum: { amount: true },
+      });
+      const alreadyCredited = BigInt(creditedAggregate._sum?.amount ?? 0n);
+      const onChainBalance = onChainUsdtToInternalUnits(
+        BigInt(await paymentContract.balanceOf(normalizedToAddress)),
+      );
+      if (alreadyCredited >= onChainBalance) {
+        console.log(`[Indexer] Skipping deposit ${txHash}[${logIndex}] — vault balance is already accounted for.`);
+        return;
+      }
+      const uncreditedBalance = onChainBalance - alreadyCredited;
+      const creditAmount = amountWei > uncreditedBalance ? uncreditedBalance : amountWei;
+
       // Attempt to create the deposit record first.
       // If a duplicate (txHash, logIndex) already exists, Prisma will throw P2002
       // which will roll back the entire transaction — preventing any double-credit.
@@ -67,7 +86,7 @@ async function creditDepositTransfer(txHash: string, logIndex: number, toAddress
           vaultAddress: normalizedToAddress,
           chainId: vault.chainId,
           asset: vault.asset,
-          amount: amountWei,
+          amount: creditAmount,
           txHash,
           logIndex,
           confirmations: 1,
@@ -84,17 +103,18 @@ async function creditDepositTransfer(txHash: string, logIndex: number, toAddress
           },
         },
         update: {
-          available: { increment: amountWei },
+          available: { increment: creditAmount },
         },
         create: {
           userId: vault.userId,
           walletAddress: vault.userWallet,
           chainId: vault.chainId,
           asset: vault.asset,
-          available: amountWei,
+          available: creditAmount,
           consumed: 0n,
         },
       });
+      didCredit = true;
     });
   } catch (err: any) {
     // P2002 = unique constraint violation — deposit already processed. Safe to ignore.
@@ -105,6 +125,7 @@ async function creditDepositTransfer(txHash: string, logIndex: number, toAddress
     throw err; // re-throw unexpected errors
   }
 
+  if (!didCredit) return false;
   console.log(`[Indexer] Successfully credited ${amountWei} to ${vault.userWallet}`);
   return true;
 }

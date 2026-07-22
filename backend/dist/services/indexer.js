@@ -30,6 +30,15 @@ function describeRpcError(error) {
     const err = error;
     return err.shortMessage ?? err.reason ?? err.info?.error?.message ?? err.message ?? String(error);
 }
+/**
+ * Credit a deposit identified by a unique (txHash, logIndex) pair.
+ *
+ * IMPORTANT: The deposit.create is inside a DB transaction and we rely on the
+ * unique constraint on (txHash, logIndex) to prevent double-credits. If two
+ * concurrent calls race through here with the same key, the second will throw
+ * a Prisma P2002 (unique constraint) error which we catch and silently ignore.
+ * This is safer than a pre-check + create pattern which has a TOCTOU gap.
+ */
 async function creditDepositTransfer(txHash, logIndex, toAddress, amountRaw) {
     const normalizedToAddress = (0, bsc_1.normalizeAddress)(toAddress);
     // BSC USDT is 18 decimals, but our internal DB uses 6 decimals.
@@ -41,48 +50,74 @@ async function creditDepositTransfer(txHash, logIndex, toAddress, amountRaw) {
     if (!vault)
         return false;
     console.log(`[Indexer] Detected deposit! ${amountWei} USDT to Vault ${normalizedToAddress} (User: ${vault.userWallet})`);
-    // Ensure we haven't already processed this tx hash + log index.
-    const existingDeposit = await prisma_1.prisma.deposit.findUnique({
-        where: { txHash_logIndex: { txHash, logIndex } },
-    });
-    if (existingDeposit)
-        return false;
-    await prisma_1.prisma.$transaction(async (tx) => {
-        await tx.deposit.create({
-            data: {
-                depositAddressId: vault.id,
-                userWallet: vault.userWallet,
-                vaultAddress: normalizedToAddress,
-                chainId: vault.chainId,
-                asset: vault.asset,
-                amount: amountWei,
-                txHash,
-                logIndex,
-                confirmations: 1,
-                credited: true,
-            },
-        });
-        await tx.userBalance.upsert({
-            where: {
-                walletAddress_chainId_asset: {
+    let didCredit = false;
+    try {
+        await prisma_1.prisma.$transaction(async (tx) => {
+            const creditedAggregate = await tx.deposit.aggregate({
+                where: {
+                    vaultAddress: normalizedToAddress,
+                    credited: true,
+                },
+                _sum: { amount: true },
+            });
+            const alreadyCredited = BigInt(creditedAggregate._sum?.amount ?? 0n);
+            const onChainBalance = onChainUsdtToInternalUnits(BigInt(await paymentContract.balanceOf(normalizedToAddress)));
+            if (alreadyCredited >= onChainBalance) {
+                console.log(`[Indexer] Skipping deposit ${txHash}[${logIndex}] — vault balance is already accounted for.`);
+                return;
+            }
+            const uncreditedBalance = onChainBalance - alreadyCredited;
+            const creditAmount = amountWei > uncreditedBalance ? uncreditedBalance : amountWei;
+            // Attempt to create the deposit record first.
+            // If a duplicate (txHash, logIndex) already exists, Prisma will throw P2002
+            // which will roll back the entire transaction — preventing any double-credit.
+            await tx.deposit.create({
+                data: {
+                    depositAddressId: vault.id,
+                    userWallet: vault.userWallet,
+                    vaultAddress: normalizedToAddress,
+                    chainId: vault.chainId,
+                    asset: vault.asset,
+                    amount: creditAmount,
+                    txHash,
+                    logIndex,
+                    confirmations: 1,
+                    credited: true,
+                },
+            });
+            await tx.userBalance.upsert({
+                where: {
+                    walletAddress_chainId_asset: {
+                        walletAddress: vault.userWallet,
+                        chainId: vault.chainId,
+                        asset: vault.asset,
+                    },
+                },
+                update: {
+                    available: { increment: creditAmount },
+                },
+                create: {
+                    userId: vault.userId,
                     walletAddress: vault.userWallet,
                     chainId: vault.chainId,
                     asset: vault.asset,
+                    available: creditAmount,
+                    consumed: 0n,
                 },
-            },
-            update: {
-                available: { increment: amountWei },
-            },
-            create: {
-                userId: vault.userId,
-                walletAddress: vault.userWallet,
-                chainId: vault.chainId,
-                asset: vault.asset,
-                available: amountWei,
-                consumed: 0n,
-            },
+            });
+            didCredit = true;
         });
-    });
+    }
+    catch (err) {
+        // P2002 = unique constraint violation — deposit already processed. Safe to ignore.
+        if (err?.code === 'P2002') {
+            console.log(`[Indexer] Skipping duplicate deposit ${txHash}[${logIndex}] — already credited.`);
+            return false;
+        }
+        throw err; // re-throw unexpected errors
+    }
+    if (!didCredit)
+        return false;
     console.log(`[Indexer] Successfully credited ${amountWei} to ${vault.userWallet}`);
     return true;
 }
@@ -116,6 +151,14 @@ async function backfillDepositTransactions(txHashes) {
         }
     }
 }
+/**
+ * Reconcile vault balances as a fallback safety net.
+ *
+ * This compares the total on-chain balance with the sum of all CREDITED deposits
+ * already recorded for that vault. This way, the reconciler only acts when
+ * actual funds are on-chain but NO deposit record exists for them — it won't
+ * double-count amounts already credited by the log-polling loop.
+ */
 async function reconcileActiveVaultBalances() {
     const limit = Number.isFinite(VAULT_RECONCILE_LIMIT) && VAULT_RECONCILE_LIMIT > 0
         ? VAULT_RECONCILE_LIMIT
@@ -131,63 +174,27 @@ async function reconcileActiveVaultBalances() {
     for (const vault of vaults) {
         try {
             const onChainBalance = onChainUsdtToInternalUnits(BigInt(await paymentContract.balanceOf(vault.vaultAddress)));
-            const balance = await prisma_1.prisma.userBalance.findUnique({
+            if (onChainBalance === 0n)
+                continue;
+            // Sum all deposits already recorded for this vault in the DB.
+            // This is the source-of-truth: only credit what isn't already recorded.
+            const creditedAggregate = await prisma_1.prisma.deposit.aggregate({
                 where: {
-                    walletAddress_chainId_asset: {
-                        walletAddress: vault.userWallet,
-                        chainId: vault.chainId,
-                        asset: vault.asset,
-                    },
+                    vaultAddress: vault.vaultAddress,
+                    credited: true,
                 },
+                _sum: { amount: true },
             });
-            const accountedBalance = balance ? BigInt(balance.available) + BigInt(balance.consumed) : 0n;
-            if (onChainBalance <= accountedBalance)
+            const alreadyCredited = BigInt(creditedAggregate._sum?.amount ?? 0n);
+            if (onChainBalance <= alreadyCredited)
                 continue;
-            const missingAmount = onChainBalance - accountedBalance;
-            const txHash = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(`vault-sync:${vault.chainId}:${vault.asset}:${vault.vaultAddress}:${onChainBalance}`));
-            const existingDeposit = await prisma_1.prisma.deposit.findUnique({
-                where: { txHash_logIndex: { txHash, logIndex: 0 } },
-            });
-            if (existingDeposit)
-                continue;
-            await prisma_1.prisma.$transaction(async (tx) => {
-                await tx.deposit.create({
-                    data: {
-                        depositAddressId: vault.id,
-                        userWallet: vault.userWallet,
-                        vaultAddress: vault.vaultAddress,
-                        chainId: vault.chainId,
-                        asset: vault.asset,
-                        amount: missingAmount,
-                        txHash,
-                        logIndex: 0,
-                        confirmations: 1,
-                        credited: true,
-                    },
-                });
-                await tx.userBalance.upsert({
-                    where: {
-                        walletAddress_chainId_asset: {
-                            walletAddress: vault.userWallet,
-                            chainId: vault.chainId,
-                            asset: vault.asset,
-                        },
-                    },
-                    update: {
-                        userId: vault.userId,
-                        available: { increment: missingAmount },
-                    },
-                    create: {
-                        userId: vault.userId,
-                        walletAddress: vault.userWallet,
-                        chainId: vault.chainId,
-                        asset: vault.asset,
-                        available: missingAmount,
-                        consumed: 0n,
-                    },
-                });
-            });
-            console.log(`[Indexer] Reconciled vault ${vault.vaultAddress}: credited missing ${missingAmount} to ${vault.userWallet}`);
+            const missingAmount = onChainBalance - alreadyCredited;
+            // Use a deterministic synthetic txHash that includes `alreadyCredited`
+            // so it's unique per "gap" we're filling, not per absolute balance.
+            const txHash = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(`vault-reconcile:${vault.chainId}:${vault.vaultAddress}:credited=${alreadyCredited}:gap=${missingAmount}`));
+            console.log(`[Indexer] Reconcile gap for vault ${vault.vaultAddress}: on-chain=${onChainBalance}, credited=${alreadyCredited}, gap=${missingAmount}`);
+            // creditDepositTransfer handles the duplicate-key guard atomically
+            await creditDepositTransfer(txHash, 0, vault.vaultAddress, missingAmount * 1000000000000n);
         }
         catch (err) {
             console.warn(`[Indexer] Skipped vault ${vault.vaultAddress}: ${describeRpcError(err)}`);
@@ -229,7 +236,6 @@ async function runIndexer() {
             if (currentBlock <= lastProcessedBlock)
                 return; // Wait for new blocks
             const targetBlock = Math.min(currentBlock, lastProcessedBlock + INDEXER_BLOCK_BATCH_SIZE);
-            // console.log(`[Indexer] Syncing blocks ${lastProcessedBlock + 1} to ${targetBlock}`);
             const filter = paymentContract.filters.Transfer(null, null);
             const logs = await paymentContract.queryFilter(filter, lastProcessedBlock + 1, targetBlock);
             for (const log of logs) {

@@ -34,6 +34,19 @@ const ERC20_ABI = [
 ];
 const provider = new ethers_1.ethers.JsonRpcProvider(bsc_1.BSC_RPC_URL);
 const erc20Interface = new ethers_1.ethers.Interface(ERC20_ABI);
+function isDuplicateRecordError(error) {
+    return Boolean(error && typeof error === 'object' && error.code === 'P2002');
+}
+function devCreditRoutesEnabled() {
+    return process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_CREDIT_ROUTES === 'true';
+}
+function requireAdminSecret(req) {
+    const expected = process.env.ADMIN_SECRET;
+    if (!expected)
+        return 'Admin secret is not configured';
+    const provided = req.headers['x-admin-secret'];
+    return provided === expected ? null : 'Forbidden';
+}
 function serializeBalance(row) {
     return {
         userId: row.userId ?? null,
@@ -48,70 +61,82 @@ function onChainUsdtToInternalUnits(amount) {
     return amount / 1000000000000n;
 }
 async function creditVerifiedDeposit({ userId, userWallet, vaultAddress, asset, chainId, amount, txHash, logIndex, confirmations, }) {
-    return prisma_1.prisma.$transaction(async (tx) => {
-        const depositAddress = await tx.depositAddress.upsert({
-            where: {
-                userWallet_chainId_asset: {
+    try {
+        return await prisma_1.prisma.$transaction(async (tx) => {
+            const depositAddress = await tx.depositAddress.upsert({
+                where: {
+                    userWallet_chainId_asset: {
+                        userWallet,
+                        chainId,
+                        asset,
+                    },
+                },
+                update: { vaultAddress, userId },
+                create: {
+                    userId,
                     userWallet,
                     chainId,
                     asset,
+                    vaultAddress,
                 },
-            },
-            update: { vaultAddress, userId },
-            create: {
-                userId,
-                userWallet,
-                chainId,
-                asset,
-                vaultAddress,
-            },
-        });
-        const existingDeposit = await tx.deposit.findUnique({
-            where: { txHash_logIndex: { txHash, logIndex } },
-        });
-        if (existingDeposit) {
-            const deposit = await tx.deposit.update({
-                where: { txHash_logIndex: { txHash, logIndex } },
-                data: { confirmations },
             });
-            return { deposit, alreadyCredited: true };
-        }
-        const deposit = await tx.deposit.create({
-            data: {
-                depositAddressId: depositAddress.id,
-                vaultAddress,
-                userWallet,
-                chainId,
-                asset,
-                amount,
-                txHash,
-                logIndex,
-                confirmations,
-                credited: true,
-            },
-        });
-        await tx.userBalance.upsert({
-            where: {
-                walletAddress_chainId_asset: {
+            const existingDeposit = await tx.deposit.findUnique({
+                where: { txHash_logIndex: { txHash, logIndex } },
+            });
+            if (existingDeposit) {
+                const deposit = await tx.deposit.update({
+                    where: { txHash_logIndex: { txHash, logIndex } },
+                    data: { confirmations },
+                });
+                return { deposit, alreadyCredited: true };
+            }
+            const deposit = await tx.deposit.create({
+                data: {
+                    depositAddressId: depositAddress.id,
+                    vaultAddress,
+                    userWallet,
+                    chainId,
+                    asset,
+                    amount,
+                    txHash,
+                    logIndex,
+                    confirmations,
+                    credited: true,
+                },
+            });
+            await tx.userBalance.upsert({
+                where: {
+                    walletAddress_chainId_asset: {
+                        walletAddress: userWallet,
+                        chainId,
+                        asset,
+                    },
+                },
+                update: {
+                    userId,
+                    available: { increment: amount },
+                },
+                create: {
+                    userId,
                     walletAddress: userWallet,
                     chainId,
                     asset,
+                    available: amount,
                 },
-            },
-            update: {
-                userId,
-                available: { increment: amount },
-            },
-            create: {
-                userId,
-                walletAddress: userWallet,
-                chainId,
-                asset,
-                available: amount,
-            },
+            });
+            return { deposit, alreadyCredited: false };
         });
-        return { deposit, alreadyCredited: false };
-    });
+    }
+    catch (error) {
+        if (!isDuplicateRecordError(error))
+            throw error;
+        const deposit = await prisma_1.prisma.deposit.findUnique({
+            where: { txHash_logIndex: { txHash, logIndex } },
+        });
+        if (!deposit)
+            throw error;
+        return { deposit, alreadyCredited: true };
+    }
 }
 async function depositRoutes(app) {
     app.get('/api/users/me/deposit-address', async (req, reply) => {
@@ -206,6 +231,9 @@ async function depositRoutes(app) {
     });
     // ── FOR TESTING ONLY: Mock direct credit ────────────────────────────────────
     app.post('/api/deposits/mock-credit', async (req, reply) => {
+        if (!devCreditRoutesEnabled()) {
+            return reply.code(404).send({ error: 'Not found', code: 'NOT_FOUND' });
+        }
         const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
         if (!session?.wallet) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
@@ -235,9 +263,9 @@ async function depositRoutes(app) {
     });
     // ── Admin-only: Mint USDT to any wallet ──────────────────────────────────────
     app.post('/api/deposits/admin-mint', async (req, reply) => {
-        const secret = req.headers['x-admin-secret'] ?? '';
-        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
-            return reply.code(403).send({ error: 'Forbidden' });
+        const adminError = requireAdminSecret(req);
+        if (adminError) {
+            return reply.code(adminError === 'Forbidden' ? 403 : 503).send({ error: adminError });
         }
         const body = zod_1.z.object({
             wallet: zod_1.z.string(),
@@ -351,7 +379,7 @@ async function depositRoutes(app) {
             });
             return reply.send({
                 status: 'credited',
-                credited: true,
+                credited: !result.alreadyCredited,
                 alreadyCredited: result.alreadyCredited,
                 depositId: result.deposit.id,
                 amount: result.deposit.amount.toString(),
@@ -383,48 +411,35 @@ async function depositRoutes(app) {
         const vaultAddress = await (0, bsc_1.predictVaultAddress)(userWallet, asset);
         const assetContract = new ethers_1.ethers.Contract(asset, ERC20_ABI, provider);
         const onChainBalance = onChainUsdtToInternalUnits(BigInt(await assetContract.balanceOf(vaultAddress)));
-        const balance = await prisma_1.prisma.userBalance.findUnique({
+        const creditedAggregate = await prisma_1.prisma.deposit.aggregate({
             where: {
-                walletAddress_chainId_asset: {
-                    walletAddress: userWallet,
-                    chainId: parsed.data.chainId,
-                    asset,
-                },
+                vaultAddress,
+                userWallet,
+                chainId: parsed.data.chainId,
+                asset,
+                credited: true,
             },
+            _sum: { amount: true },
         });
-        const accountedBalance = balance ? BigInt(balance.available) + BigInt(balance.consumed) : 0n;
-        if (onChainBalance <= accountedBalance) {
+        const alreadyCredited = BigInt(creditedAggregate._sum?.amount ?? 0n);
+        if (onChainBalance <= alreadyCredited) {
             return reply.send({
                 status: 'synced',
                 credited: false,
                 vaultAddress,
                 onChainBalance: onChainBalance.toString(),
-                accountedBalance: accountedBalance.toString(),
+                alreadyCredited: alreadyCredited.toString(),
             });
         }
-        const missingAmount = onChainBalance - accountedBalance;
-        const syntheticTxHash = ethers_1.ethers.keccak256(ethers_1.ethers.toUtf8Bytes(`vault-sync:${parsed.data.chainId}:${asset}:${vaultAddress}:${onChainBalance}`));
-        const result = await creditVerifiedDeposit({
-            userId: session.userId,
-            userWallet,
-            vaultAddress,
-            asset,
-            chainId: parsed.data.chainId,
-            amount: missingAmount,
-            txHash: syntheticTxHash,
-            logIndex: 0,
-            confirmations: 1,
-        });
-        console.log(`[Deposits] Synced vault ${vaultAddress}: credited missing ${missingAmount} to ${userWallet}`);
+        const pendingAmount = onChainBalance - alreadyCredited;
+        console.log(`[Deposits] Detected uncredited vault balance ${pendingAmount} for ${userWallet}`);
         return reply.send({
-            status: 'credited',
-            credited: !result.alreadyCredited,
-            alreadyCredited: result.alreadyCredited,
-            depositId: result.deposit.id,
-            amount: result.deposit.amount.toString(),
+            status: 'detected',
+            credited: false,
+            pendingAmount: pendingAmount.toString(),
             vaultAddress,
             onChainBalance: onChainBalance.toString(),
-            accountedBalance: accountedBalance.toString(),
+            creditedTotal: alreadyCredited.toString(),
         });
     });
     app.post('/api/deposits/credit', async (req, reply) => {
@@ -448,72 +463,26 @@ async function depositRoutes(app) {
         if (!(0, bsc_1.isSupportedAsset)(asset)) {
             return reply.code(400).send({ error: 'Unsupported deposit asset', code: 'UNSUPPORTED_ASSET' });
         }
-        const result = await prisma_1.prisma.$transaction(async (tx) => {
-            const depositAddress = await tx.depositAddress.upsert({
-                where: {
-                    userWallet_chainId_asset: {
-                        userWallet,
-                        chainId: parsed.data.chainId,
-                        asset,
-                    },
-                },
-                update: { vaultAddress, userId: parsed.data.userId },
-                create: {
-                    userId: parsed.data.userId,
-                    userWallet,
-                    chainId: parsed.data.chainId,
-                    asset,
-                    vaultAddress,
-                },
-            });
-            const txHash = parsed.data.txHash.toLowerCase();
-            const existingDeposit = await tx.deposit.findUnique({
-                where: { txHash_logIndex: { txHash, logIndex: parsed.data.logIndex } },
-            });
-            const deposit = existingDeposit
-                ? await tx.deposit.update({
-                    where: { txHash_logIndex: { txHash, logIndex: parsed.data.logIndex } },
-                    data: { confirmations: parsed.data.confirmations },
-                })
-                : await tx.deposit.create({
-                    data: {
-                        depositAddressId: depositAddress.id,
-                        vaultAddress,
-                        userWallet,
-                        chainId: parsed.data.chainId,
-                        asset,
-                        amount: BigInt(parsed.data.amount),
-                        txHash,
-                        logIndex: parsed.data.logIndex,
-                        confirmations: parsed.data.confirmations,
-                        credited: true,
-                    },
-                });
-            if (!existingDeposit) {
-                await tx.userBalance.upsert({
-                    where: {
-                        walletAddress_chainId_asset: {
-                            walletAddress: userWallet,
-                            chainId: parsed.data.chainId,
-                            asset,
-                        },
-                    },
-                    update: {
-                        userId: parsed.data.userId,
-                        available: { increment: BigInt(parsed.data.amount) },
-                    },
-                    create: {
-                        userId: parsed.data.userId,
-                        walletAddress: userWallet,
-                        chainId: parsed.data.chainId,
-                        asset,
-                        available: BigInt(parsed.data.amount),
-                    },
-                });
-            }
-            return deposit;
+        const expectedVaultAddress = await (0, bsc_1.predictVaultAddress)(userWallet, asset);
+        if (vaultAddress !== expectedVaultAddress) {
+            return reply.code(400).send({ error: 'Vault address does not match user wallet', code: 'VAULT_MISMATCH' });
+        }
+        const result = await creditVerifiedDeposit({
+            userId: parsed.data.userId,
+            userWallet,
+            vaultAddress,
+            asset,
+            chainId: parsed.data.chainId,
+            amount: BigInt(parsed.data.amount),
+            txHash: parsed.data.txHash.toLowerCase(),
+            logIndex: parsed.data.logIndex,
+            confirmations: parsed.data.confirmations,
         });
-        return reply.code(201).send({ depositId: result.id, credited: result.credited });
+        return reply.code(201).send({
+            depositId: result.deposit.id,
+            credited: !result.alreadyCredited,
+            alreadyCredited: result.alreadyCredited,
+        });
     });
     app.post('/api/deposits/withdraw', async (req, reply) => {
         const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
@@ -579,6 +548,9 @@ async function depositRoutes(app) {
         }
         const { wallet } = req.params;
         const userWallet = (0, bsc_1.normalizeAddress)(wallet);
+        if ((0, bsc_1.normalizeAddress)(session.wallet) !== userWallet) {
+            return reply.code(403).send({ error: 'Forbidden', code: 'FORBIDDEN' });
+        }
         const requests = await prisma_1.prisma.withdrawalRequest.findMany({
             where: { userWallet },
             orderBy: { createdAt: 'desc' },
@@ -598,6 +570,9 @@ async function depositRoutes(app) {
     });
     app.post('/api/deposits/testnet-credit', async (req, reply) => {
         // ONLY allowed if environment is not strictly production requiring an indexer
+        if (!devCreditRoutesEnabled()) {
+            return reply.code(404).send({ error: 'Not found', code: 'NOT_FOUND' });
+        }
         const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
         if (!session?.wallet) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
@@ -678,6 +653,9 @@ async function depositRoutes(app) {
     });
     // ── FOR DEV ONLY: Reset entire database ──────────────────────────────────────
     app.get('/api/dev/reset', async (req, reply) => {
+        if (!devCreditRoutesEnabled()) {
+            return reply.code(404).send({ error: 'Not found', code: 'NOT_FOUND' });
+        }
         try {
             await prisma_1.prisma.$transaction([
                 prisma_1.prisma.trade.deleteMany({}),
@@ -692,6 +670,24 @@ async function depositRoutes(app) {
                 prisma_1.prisma.indexerState.deleteMany({}),
             ]);
             return reply.send({ success: true, message: "Database completely wiped!" });
+        }
+        catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+    // ── FOR DEV ONLY: Reset specific user balance ──────────────────────────────────────
+    app.get('/api/dev/reset-balance/:wallet', async (req, reply) => {
+        if (!devCreditRoutesEnabled()) {
+            return reply.code(404).send({ error: 'Not found', code: 'NOT_FOUND' });
+        }
+        try {
+            const { wallet } = req.params;
+            const walletAddress = wallet.toLowerCase();
+            await prisma_1.prisma.userBalance.updateMany({
+                where: { walletAddress },
+                data: { available: 0n }
+            });
+            return reply.send({ success: true, message: `Balance for ${walletAddress} reset to 0!` });
         }
         catch (e) {
             return reply.code(500).send({ error: e.message });

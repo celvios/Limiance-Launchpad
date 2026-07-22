@@ -26,7 +26,8 @@ export function useChartData(mint: string, range: ChartTimeRange) {
   return useQuery({
     queryKey: ['chart-data', mint, range],
     queryFn: () => fetchChartData(mint, range),
-    staleTime: 30_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
     enabled: !!mint,
   });
 }

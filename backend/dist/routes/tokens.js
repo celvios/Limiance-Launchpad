@@ -4,6 +4,7 @@ exports.tokenRoutes = tokenRoutes;
 const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const bsc_1 = require("../services/bsc");
+const jwt_1 = require("../lib/jwt");
 const server_1 = require("../ws/server");
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DeployBody = zod_1.z.object({
@@ -24,6 +25,7 @@ const DeployBody = zod_1.z.object({
 });
 const FeedQuery = zod_1.z.object({
     filter: zod_1.z.enum(['new', 'trending', 'near_grad', 'graduated', 'following']).default('new'),
+    sort: zod_1.z.enum(['marketCap', 'volume24h', 'age', 'holders']).optional(),
     cursor: zod_1.z.string().optional(),
     limit: zod_1.z.coerce.number().min(1).max(50).default(20),
     wallet: zod_1.z.string().optional(),
@@ -107,75 +109,89 @@ async function fetchTokenSocialCounts(tokenMints) {
     }
     return countMap;
 }
-// The sigmoid curve uses graduationThreshold/2 as the midpoint.
-// This means:
-//   supply=0 → price≈pMin
-//   supply=graduationThreshold/2 → price midway between pMin and pMax
-//   supply=graduationThreshold → price≈pMax
-// curveK=10 gives a nice S-curve shape.
-const CURVE_K = 10.0;
-function getSigmoidPrice(supply, pMin, pMax, _k, graduationThreshold) {
-    if (graduationThreshold <= 0)
+// ─── Exponential Bonding Curve ────────────────────────────────────────────────
+// Price formula: Price(supply) = pMin * (pMax/pMin)^(supply / graduationThreshold)
+//   supply=0  → price = pMin   (starting price)
+//   supply=GT → price = pMax   (graduation price)
+// Every single buy immediately pushes the price up — no flat tail.
+function getExponentialPrice(supply, pMin, pMax, graduationThreshold) {
+    if (graduationThreshold <= 0 || pMin <= 0 || pMax <= pMin)
         return pMin;
-    const midpoint = graduationThreshold / 2;
-    const normalizedSupply = supply / midpoint;
-    const expVal = Math.exp(-CURVE_K * (normalizedSupply - 1.0));
-    return pMin + (pMax - pMin) / (1 + expVal);
+    return pMin * Math.pow(pMax / pMin, supply / graduationThreshold);
 }
-function getSigmoidIntegral(supply, pMin, pMax, _k, graduationThreshold) {
-    if (graduationThreshold <= 0)
+/**
+ * Exact closed-form integral: total USDT cost to buy `supply` tokens from 0.
+ *   ∫₀ˢ pMin*(pMax/pMin)^(x/GT) dx = pMin*GT/ln(pMax/pMin) * [(pMax/pMin)^(s/GT) - 1]
+ */
+function getExponentialIntegral(supply, pMin, pMax, graduationThreshold) {
+    if (graduationThreshold <= 0 || pMin <= 0)
         return 0;
-    const midpoint = graduationThreshold / 2;
-    // Numerical integration via trapezoid rule (100 steps) — avoids overflow
-    const steps = 100;
-    let total = 0;
-    const step = supply / steps;
-    for (let i = 0; i < steps; i++) {
-        const x0 = i * step;
-        const x1 = (i + 1) * step;
-        const p0 = getSigmoidPrice(x0, pMin, pMax, 0, graduationThreshold);
-        const p1 = getSigmoidPrice(x1, pMin, pMax, 0, graduationThreshold);
-        total += (p0 + p1) * step / 2;
-    }
-    return total;
+    if (pMax <= pMin)
+        return pMin * supply;
+    const ratio = pMax / pMin;
+    const lnRatio = Math.log(ratio);
+    return (pMin * graduationThreshold / lnRatio) * (Math.pow(ratio, supply / graduationThreshold) - 1);
 }
+/**
+ * Given a USDT payment, returns the number of tokens received starting from currentSupply.
+ * Uses the exact analytical inverse of the cost integral.
+ */
 function estimateBuyTokensForPayment(paymentUsdt, currentSupply, pMin, pMax, graduationThreshold) {
     if (paymentUsdt <= 0)
         return 0;
     const remaining = Math.max(0, graduationThreshold - currentSupply);
     if (remaining <= 0)
         return 0;
-    let lo = 0;
-    let hi = remaining;
-    let tokensOut = 0;
-    for (let i = 0; i < 48; i++) {
-        const mid = (lo + hi) / 2;
-        const cost = getSigmoidIntegral(currentSupply + mid, pMin, pMax, 0, graduationThreshold) -
-            getSigmoidIntegral(currentSupply, pMin, pMax, 0, graduationThreshold);
-        if (cost <= paymentUsdt) {
-            tokensOut = mid;
-            lo = mid;
-        }
-        else {
-            hi = mid;
-        }
-    }
-    return Math.floor(tokensOut);
+    if (pMax <= pMin)
+        return Math.min(Math.floor(paymentUsdt / pMin), remaining);
+    const ratio = pMax / pMin;
+    const lnRatio = Math.log(ratio);
+    const priceAtCurrent = pMin * Math.pow(ratio, currentSupply / graduationThreshold);
+    const tokensOut = (graduationThreshold / lnRatio) *
+        Math.log(1 + (paymentUsdt * lnRatio) / (priceAtCurrent * graduationThreshold));
+    return Math.floor(Math.min(tokensOut, remaining));
 }
-function serializeToken(token, creatorHandle, counts = emptyCounts()) {
+function getExponentialCostBetween(fromSupply, toSupply, pMin, pMax, graduationThreshold) {
+    if (toSupply <= fromSupply)
+        return 0;
+    return (getExponentialIntegral(toSupply, pMin, pMax, graduationThreshold) -
+        getExponentialIntegral(fromSupply, pMin, pMax, graduationThreshold));
+}
+function estimateSellUsdtForTokens(tokenAmount, currentSupply, pMin, pMax, graduationThreshold) {
+    if (tokenAmount <= 0 || tokenAmount > currentSupply)
+        return 0;
+    const fromSupply = Math.max(0, currentSupply - tokenAmount);
+    const gross = getExponentialCostBetween(fromSupply, currentSupply, pMin, pMax, graduationThreshold);
+    return gross * 0.95;
+}
+async function serializeToken(token, creatorHandle, counts = emptyCounts()) {
     const tokenAddress = token.tokenAddress ?? token.mint;
     const supply = Number(token.currentSupply.toString());
     const cap = Number(token.supplyCap.toString());
     const pMax = Number(token.curveParamA.toString()) / 1e18;
     const pMin = Number(token.curveParamB.toString()) / 1e18;
-    const k = Number(token.curveParamC) / 1e6; // k stored for reference; curve now uses graduationThreshold/2 as midpoint
     const graduationThresholdNum = Number(token.graduationThreshold);
-    const currentPrice = getSigmoidPrice(supply, pMin, pMax, k, graduationThresholdNum);
+    const currentPrice = getExponentialPrice(supply, pMin, pMax, graduationThresholdNum);
     const totalRaised = counts.totalRaised;
     // Market cap = current price × total supply cap (fully diluted)
     const marketCap = cap > 0 ? currentPrice * cap : 0;
     // Circulating market cap = current price × tokens already sold
     const circulatingMarketCap = currentPrice * supply;
+    // ── Real 24h price change ────────────────────────────────────────────────────
+    // Find the oldest trade from 24h ago; if none, use pMin (starting price) as baseline.
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const trade24hAgo = await prisma_1.prisma.trade.findFirst({
+        where: { tokenMint: tokenAddress, timestamp: { lte: cutoff24h } },
+        orderBy: { timestamp: 'desc' },
+        select: { pricePerToken: true },
+    });
+    // price24h: use stored trade price OR fall back to pMin for brand-new tokens
+    const price24h = trade24hAgo
+        ? Number(trade24hAgo.pricePerToken) / 1e18
+        : pMin;
+    const priceChange24h = price24h > 0
+        ? ((currentPrice - price24h) / price24h) * 100
+        : 0;
     return {
         tokenAddress,
         mint: tokenAddress,
@@ -186,20 +202,14 @@ function serializeToken(token, creatorHandle, counts = emptyCounts()) {
         creatorWallet: token.creator,
         creatorHandle: creatorHandle ?? null,
         createdAt: token.createdAt.getTime(),
-        curveType: 'sigmoid',
-        curveParams: {
-            type: 'sigmoid',
-            pMin,
-            pMax,
-            k,
-            midpoint: graduationThresholdNum / 2,
-        },
+        curveType: 'exponential',
+        curveParams: { type: 'exponential', pMin, pMax },
         currentSupply: supply,
         supplyCap: cap,
         graduationThreshold: graduationThresholdNum,
         status: token.status,
         price: currentPrice,
-        priceChange24h: 0,
+        priceChange24h: Math.round(priceChange24h * 100) / 100,
         marketCap,
         circulatingMarketCap,
         commentCount: counts.commentCount,
@@ -216,13 +226,20 @@ function serializeToken(token, creatorHandle, counts = emptyCounts()) {
 }
 async function tokenRoutes(app) {
     app.post('/api/tokens/deploy', async (req, reply) => {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet) {
+            return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+        }
         const parsed = DeployBody.safeParse(req.body);
         if (!parsed.success) {
             return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
         }
         try {
             const body = parsed.data;
-            const creator = (0, bsc_1.normalizeAddress)(body.creator);
+            const creator = (0, bsc_1.normalizeAddress)(session.wallet);
+            if ((0, bsc_1.normalizeAddress)(body.creator) !== creator) {
+                return reply.code(403).send({ error: 'Creator wallet does not match session', code: 'FORBIDDEN' });
+            }
             const tokenAddress = pseudoAddress(`${creator}:${body.symbol}:${Date.now()}`);
             const saleAddress = pseudoAddress(`${tokenAddress}:sale`);
             const supplyCap = BigInt(body.totalSupply);
@@ -244,10 +261,10 @@ async function tokenRoutes(app) {
                     currentSupply: BigInt(body.initialBuyAmount),
                     graduationThreshold,
                     creatorAllocation: 0,
-                    curveType: 'sigmoid',
+                    curveType: 'exponential',
                     curveParamA: toWei(pMax),
                     curveParamB: toWei(pMin),
-                    curveParamC: BigInt(Math.round((body.curveParams.k ?? 0.002) * 1e6)),
+                    curveParamC: 0n, // unused for exponential curve
                     status: 'active',
                 },
             });
@@ -255,7 +272,7 @@ async function tokenRoutes(app) {
             let initialSolAmountWei = 0n;
             let costUsdt = 0;
             if (body.initialBuyAmount > 0) {
-                costUsdt = getSigmoidIntegral(body.initialBuyAmount, pMin, pMax, 0, Number(graduationThreshold));
+                costUsdt = getExponentialIntegral(body.initialBuyAmount, pMin, pMax, Number(graduationThreshold));
                 initialSolAmountWei = BigInt(Math.floor(costUsdt * 1e6));
             }
             const creationFeeUsdt = bsc_1.TOKEN_CREATION_FEE_USDT; // Read from RENDER env var
@@ -379,9 +396,16 @@ async function tokenRoutes(app) {
             where.status = 'active';
         if (parsed.data.cursor)
             where.createdAt = { lt: new Date(parsed.data.cursor) };
+        let orderBy = { createdAt: 'desc' };
+        if (parsed.data.sort === 'marketCap')
+            orderBy = { currentSupply: 'desc' }; // approximation of MC
+        else if (parsed.data.sort === 'holders')
+            orderBy = { holderCount: 'desc' };
+        else if (parsed.data.sort === 'volume24h')
+            orderBy = { volume24h: 'desc' };
         const tokens = await prisma_1.prisma.token.findMany({
             where,
-            orderBy: { createdAt: 'desc' },
+            orderBy,
             take: parsed.data.limit + 1,
         });
         const page = tokens.slice(0, parsed.data.limit);
@@ -395,7 +419,7 @@ async function tokenRoutes(app) {
         const nextCursor = tokens.length > parsed.data.limit ? page[page.length - 1]?.createdAt.toISOString() : null;
         const countMap = await fetchTokenSocialCounts(page.map((t) => t.mint));
         return reply.send({
-            tokens: page.map((t) => serializeToken(t, profileMap.get(t.creator), countMap.get(t.mint))),
+            tokens: await Promise.all(page.map((t) => serializeToken(t, profileMap.get(t.creator), countMap.get(t.mint)))),
             nextCursor,
             total: page.length,
         });
@@ -415,12 +439,13 @@ async function tokenRoutes(app) {
         const creatorHandle = profile ? (profile.usernameDisplay || profile.username) : null;
         const creatorPic = profile?.profilePicUri ?? null;
         const countMap = await fetchTokenSocialCounts([token.mint]);
-        return reply.send({ ...serializeToken(token, creatorHandle, countMap.get(token.mint)), creatorPicUri: creatorPic });
+        const serializedToken = await serializeToken(token, creatorHandle, countMap.get(token.mint));
+        return reply.send({ ...serializedToken, creatorPicUri: creatorPic });
     });
     app.post('/api/tokens/:address/trade', async (req, reply) => {
         // Authenticated Balance Trade — fully backend-tracked (no on-chain tx per trade)
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         const TradeBody = zod_1.z.object({
@@ -435,10 +460,13 @@ async function tokenRoutes(app) {
         }
         const { wallet, type, amountUsdt } = parsed.data;
         const userWallet = (0, bsc_1.normalizeAddress)(wallet);
+        if ((0, bsc_1.normalizeAddress)(session.wallet) !== userWallet) {
+            return reply.code(403).send({ error: 'Wallet does not match session', code: 'FORBIDDEN' });
+        }
         const { address: tokenAddressParam } = req.params;
         const tokenAddress = tokenAddressParam.toLowerCase();
         // USDT: 6 decimals for DB storage.
-        const amountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
+        const requestedAmountUsdtWei = BigInt(Math.round(amountUsdt * 1e6));
         try {
             const result = await prisma_1.prisma.$transaction(async (tx) => {
                 const token = await tx.token.findFirst({
@@ -468,15 +496,19 @@ async function tokenRoutes(app) {
                 //   amountTokensWei = 6-decimal units for UserTokenBalance.
                 const amountTokensRaw = BigInt(Math.round(resolvedAmountTokens));
                 const amountTokensWei = BigInt(Math.round(resolvedAmountTokens * 1e6));
+                const trustedAmountUsdt = type === 'buy'
+                    ? amountUsdt
+                    : estimateSellUsdtForTokens(resolvedAmountTokens, currentSupply, pMin, pMax, graduationThreshold);
+                const trustedAmountUsdtWei = BigInt(Math.floor(trustedAmountUsdt * 1e6));
                 if (type === 'buy') {
                     // ── BUY ──────────────────────────────────────────────────────────────
-                    if (!usdtBalance || usdtBalance.available < amountUsdtWei) {
+                    if (!usdtBalance || usdtBalance.available < requestedAmountUsdtWei) {
                         throw new Error('Insufficient USDT balance — please deposit more');
                     }
                     // Deduct USDT
                     await tx.userBalance.update({
                         where: { id: usdtBalance.id },
-                        data: { available: { decrement: amountUsdtWei }, consumed: { increment: amountUsdtWei } },
+                        data: { available: { decrement: requestedAmountUsdtWei }, consumed: { increment: requestedAmountUsdtWei } },
                     });
                     // Credit token balance (6-decimal scaled for UserTokenBalance)
                     const existingTokenBal = await tx.userTokenBalance.findUnique({
@@ -512,6 +544,9 @@ async function tokenRoutes(app) {
                     if (!tokenBalance || tokenBalance.amount < amountTokensWei) {
                         throw new Error('Insufficient token balance to sell');
                     }
+                    if (trustedAmountUsdtWei <= 0n) {
+                        throw new Error('Sell amount is too small for the current curve price');
+                    }
                     // Deduct token balance
                     await tx.userTokenBalance.update({
                         where: { walletAddress_tokenAddress: { walletAddress: userWallet, tokenAddress: token.mint } },
@@ -521,7 +556,7 @@ async function tokenRoutes(app) {
                     if (usdtBalance) {
                         await tx.userBalance.update({
                             where: { id: usdtBalance.id },
-                            data: { available: { increment: amountUsdtWei } },
+                            data: { available: { increment: trustedAmountUsdtWei } },
                         });
                     }
                     else {
@@ -530,7 +565,7 @@ async function tokenRoutes(app) {
                                 walletAddress: userWallet,
                                 chainId: bsc_1.BSC_CHAIN_ID,
                                 asset: bsc_1.PAYMENT_ASSET,
-                                available: amountUsdtWei,
+                                available: trustedAmountUsdtWei,
                             },
                         });
                     }
@@ -549,10 +584,10 @@ async function tokenRoutes(app) {
                         walletAddress: userWallet,
                         type,
                         amount: amountTokensWei,
-                        solAmount: amountUsdtWei,
-                        paymentAmount: amountUsdtWei,
+                        solAmount: type === 'buy' ? requestedAmountUsdtWei : trustedAmountUsdtWei,
+                        paymentAmount: type === 'buy' ? requestedAmountUsdtWei : trustedAmountUsdtWei,
                         paymentAsset: bsc_1.PAYMENT_ASSET,
-                        pricePerToken: resolvedAmountTokens > 0 ? BigInt(Math.round((amountUsdt / resolvedAmountTokens) * 1e18)) : 0n,
+                        pricePerToken: resolvedAmountTokens > 0 ? BigInt(Math.round((trustedAmountUsdt / resolvedAmountTokens) * 1e18)) : 0n,
                         txSignature: `internal-${type}-${Date.now()}`,
                         timestamp: new Date(),
                         isWhale: amountUsdt >= 1000,
