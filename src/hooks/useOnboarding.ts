@@ -187,6 +187,11 @@ export function useOnboarding() {
             }
             throw new Error(err.error || `Failed to create profile (${res.status})`);
           }
+
+          const body = (await res.json().catch(() => null)) as { profile?: unknown } | null;
+          if (body?.profile) {
+            queryClient.setQueryData(['profile', walletAddress], body.profile);
+          }
         }
 
         // Invalidate profile queries so the rest of the app picks up the new profile
@@ -205,7 +210,7 @@ export function useOnboarding() {
         setCreating(false);
       }
     },
-    [address, walletAddress, queryClient]
+    [address, walletAddress, walletToken, queryClient]
   );
 
   /* ── Upload file to IPFS ── */

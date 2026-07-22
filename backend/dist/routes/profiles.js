@@ -4,7 +4,6 @@ exports.profileRoutes = profileRoutes;
 const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const jwt_1 = require("../lib/jwt");
-const price_1 = require("../services/price");
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation schemas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +70,58 @@ async function buildProfileResponse(profile, viewerWallet) {
         isOwnProfile: viewerWallet === profile.walletAddress,
     };
 }
+async function walletAliases(walletAddress) {
+    const wallet = walletAddress.toLowerCase();
+    const user = await prisma_1.prisma.user.findFirst({
+        where: {
+            OR: [
+                { primaryWalletAddress: wallet },
+                { embeddedSignerAddress: wallet },
+                { smartAccountAddress: wallet },
+                { wallets: { some: { walletAddress: wallet } } },
+            ],
+        },
+        include: { wallets: { select: { walletAddress: true } } },
+    });
+    return [
+        wallet,
+        user?.primaryWalletAddress,
+        user?.embeddedSignerAddress,
+        user?.smartAccountAddress,
+        ...(user?.wallets?.map((w) => w.walletAddress) ?? []),
+    ]
+        .filter((alias) => typeof alias === 'string' && alias.length > 0)
+        .map((alias) => alias.toLowerCase())
+        .filter((alias, index, aliases) => aliases.indexOf(alias) === index);
+}
+async function findOnboardedProfileForWallet(walletAddress) {
+    const aliases = await walletAliases(walletAddress);
+    return prisma_1.prisma.profile.findFirst({
+        where: { walletAddress: { in: aliases }, onboarded: true },
+    });
+}
+async function sessionCanUseWallet(session, walletAddress) {
+    const wallet = walletAddress.toLowerCase();
+    if (session.wallet?.toLowerCase() === wallet)
+        return true;
+    if (!session.userId)
+        return false;
+    const user = await prisma_1.prisma.user.findUnique({
+        where: { id: session.userId },
+        include: { wallets: { select: { walletAddress: true } } },
+    });
+    if (!user)
+        return false;
+    return [
+        user.primaryWalletAddress,
+        user.embeddedSignerAddress,
+        user.smartAccountAddress,
+        ...(user.wallets?.map((w) => w.walletAddress) ?? []),
+    ]
+        .filter(Boolean)
+        .map((alias) => alias.toLowerCase())
+        .includes(wallet);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Route plugin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,9 +148,7 @@ async function profileRoutes(fastify) {
     fastify.get('/api/profiles/:wallet', async (req, reply) => {
         const { wallet } = req.params;
         const viewer = req.query.viewer;
-        const profile = await prisma_1.prisma.profile.findUnique({
-            where: { walletAddress: wallet },
-        });
+        const profile = await findOnboardedProfileForWallet(wallet);
         if (!profile || !profile.onboarded) {
             return reply.code(404).send({ error: 'Profile not found', code: 'NOT_FOUND' });
         }
@@ -119,8 +168,8 @@ async function profileRoutes(fastify) {
         const walletAddress = parsed.data.walletAddress.toLowerCase();
         const { username, profilePicUri, coverUri } = parsed.data;
         // JWT authentication
-        const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== walletAddress) {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet || !(await sessionCanUseWallet(session, walletAddress))) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         // Username format
@@ -130,14 +179,10 @@ async function profileRoutes(fastify) {
                 .send({ error: 'Invalid username format', code: 'INVALID_USERNAME' });
         }
         const usernameLower = username.toLowerCase();
-        // Check profile already exists
-        const existing = await prisma_1.prisma.profile.findUnique({
-            where: { walletAddress },
-        });
-        if (existing?.onboarded) {
-            return reply
-                .code(409)
-                .send({ error: 'Profile already exists', code: 'ALREADY_EXISTS' });
+        // Check profile already exists under this wallet or any linked wallet alias
+        const existing = await findOnboardedProfileForWallet(walletAddress);
+        if (existing) {
+            return reply.send({ profile: await buildProfileResponse(existing, session.wallet) });
         }
         // Check username uniqueness
         const usernameTaken = await prisma_1.prisma.profile.findUnique({
@@ -176,16 +221,18 @@ async function profileRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { walletAddress, username, profilePicUri, coverUri } = parsed.data;
-        if (walletAddress !== wallet) {
+        const walletAddress = parsed.data.walletAddress.toLowerCase();
+        const { username, profilePicUri, coverUri } = parsed.data;
+        const walletParam = wallet.toLowerCase();
+        if (walletAddress !== walletParam) {
             return reply.code(403).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         // JWT authentication
-        const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        const session = (0, jwt_1.authenticateSession)(req.headers.authorization);
+        if (!session?.wallet || !(await sessionCanUseWallet(session, walletAddress))) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
-        const profile = await prisma_1.prisma.profile.findUnique({ where: { walletAddress: wallet } });
+        const profile = await findOnboardedProfileForWallet(walletAddress);
         if (!profile || !profile.onboarded) {
             return reply.code(404).send({ error: 'Profile not found', code: 'NOT_FOUND' });
         }
@@ -201,7 +248,7 @@ async function profileRoutes(fastify) {
             const taken = await prisma_1.prisma.profile.findUnique({
                 where: { username: usernameLower },
             });
-            if (taken && taken.walletAddress !== wallet) {
+            if (taken && taken.walletAddress !== profile.walletAddress) {
                 return reply.code(409).send({ error: 'Username taken', code: 'USERNAME_TAKEN' });
             }
             updateData.username = usernameLower;
@@ -214,7 +261,7 @@ async function profileRoutes(fastify) {
         if (parsed.data.bio !== undefined)
             updateData.bio = parsed.data.bio;
         const updated = await prisma_1.prisma.profile.update({
-            where: { walletAddress: wallet },
+            where: { walletAddress: profile.walletAddress },
             data: updateData,
         });
         return reply.send({ profile: await buildProfileResponse(updated) });
@@ -295,34 +342,39 @@ async function profileRoutes(fastify) {
         const mints = netHoldings.map((h) => h.tokenMint);
         const tokens = await prisma_1.prisma.token.findMany({ where: { mint: { in: mints } } });
         const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
-        const PAYMENT_UNIT = 1000000000000000000n;
-        const INTERNAL_PAYMENT_UNIT = 1000000n;
-        const TOKEN_DECIMALS = 1000000n;
         const holdings = netHoldings
             .map((h) => {
             const token = tokenMap.get(h.tokenMint);
             if (!token)
                 return null;
-            const currentPrice = (0, price_1.computeSpotPrice)(token.curveType, BigInt(token.curveParamA.toString()), BigInt(token.curveParamB.toString()), BigInt(token.curveParamC.toString()), BigInt(token.currentSupply.toString()), BigInt(token.supplyCap.toString()));
-            const avgBuyInternal = h.buyAmount > BigInt(0)
-                ? (h.solSpent * TOKEN_DECIMALS) / h.buyAmount
-                : 0n;
-            const currentWei = Number(currentPrice);
-            const currentInternal = currentPrice / (PAYMENT_UNIT / INTERNAL_PAYMENT_UNIT);
-            const pnlPercent = avgBuyInternal > 0n
-                ? ((Number(currentInternal) - Number(avgBuyInternal)) / Number(avgBuyInternal)) * 100
+            // Compute spot price directly in USDT (floats) using the correct
+            // exponential bonding curve: pMin * (pMax/pMin)^(supply/GT)
+            // This matches the formula used in tokens.ts exactly.
+            const pMax = Number(token.curveParamA) / 1e18;
+            const pMin = Number(token.curveParamB) / 1e18;
+            const supply = Number(token.currentSupply) / 1e6; // human token units
+            const gt = Number(token.graduationThreshold) / 1e6; // human token units
+            const currentPriceUsdt = (pMin > 0 && pMax > pMin && gt > 0)
+                ? pMin * Math.pow(pMax / pMin, supply / gt)
+                : pMax; // fallback
+            // h.net is in raw token units (1e6 decimals)
+            const tokenAmount = Number(h.net) / 1e6;
+            // h.solSpent is in internal USDT units (1e6 decimals)
+            const usdtSpent = Number(h.solSpent) / 1e6;
+            const avgBuyPrice = tokenAmount > 0 ? usdtSpent / tokenAmount : 0;
+            const value = tokenAmount * currentPriceUsdt;
+            const pnlPercent = avgBuyPrice > 0
+                ? ((currentPriceUsdt - avgBuyPrice) / avgBuyPrice) * 100
                 : 0;
-            const valueWei = (h.net * BigInt(currentWei)) / TOKEN_DECIMALS;
-            const valuePayment = Number(valueWei) / Number(PAYMENT_UNIT);
             return {
                 mint: token.mint,
                 symbol: token.symbol,
                 name: token.name,
-                amount: Number(h.net) / Number(TOKEN_DECIMALS),
-                avgBuyPrice: Number(avgBuyInternal) / Number(INTERNAL_PAYMENT_UNIT),
-                currentPrice: currentWei / Number(PAYMENT_UNIT),
+                amount: Math.round(tokenAmount * 1e6) / 1e6,
+                avgBuyPrice: Math.round(avgBuyPrice * 1e8) / 1e8,
+                currentPrice: Math.round(currentPriceUsdt * 1e8) / 1e8,
                 pnlPercent: Math.round(pnlPercent * 100) / 100,
-                value: Math.round(valuePayment * 1e6) / 1e6,
+                value: Math.round(value * 1e6) / 1e6,
             };
         })
             .filter((h) => h !== null);
@@ -418,6 +470,90 @@ async function profileRoutes(fastify) {
         })
             .catch(() => null); // Ignore if not found
         return reply.send({ following: false });
+    });
+    // Net worth history — computed from real trade history
+    fastify.get('/api/profiles/:wallet/networth', async (req, reply) => {
+        const { wallet } = req.params;
+        // Fetch all trades for this wallet, oldest first
+        const trades = await prisma_1.prisma.trade.findMany({
+            where: { walletAddress: wallet },
+            orderBy: { timestamp: 'asc' },
+            select: {
+                timestamp: true,
+                type: true,
+                amount: true, // raw token units (1e6)
+                solAmount: true, // USDT paid/received (1e6)
+                tokenMint: true,
+            },
+        });
+        if (trades.length === 0) {
+            return reply.send({ networth: [] });
+        }
+        // Fetch token curve params for all tokens the user has traded
+        const mints = [...new Set(trades.map((t) => t.tokenMint))];
+        const tokens = await prisma_1.prisma.token.findMany({
+            where: { mint: { in: mints } },
+            select: {
+                mint: true,
+                curveParamA: true, // pMax ×1e18
+                curveParamB: true, // pMin ×1e18
+                graduationThreshold: true,
+                currentSupply: true,
+            },
+        });
+        const tokenMap = new Map(tokens.map((t) => [t.mint, t]));
+        // Replay trades: track per-token running supply and USDT spent
+        // Group trades by UTC day, compute end-of-day portfolio value
+        const dayMap = new Map(); // "YYYY-MM-DD" → value
+        // Running state
+        const holding = new Map(); // tokenMint → human token count
+        const tokenSupplyAtTime = new Map(); // rough supply proxy
+        for (const trade of trades) {
+            const dayKey = trade.timestamp.toISOString().slice(0, 10);
+            const amount = Number(trade.amount) / 1e6; // human tokens
+            if (trade.type === 'buy') {
+                holding.set(trade.tokenMint, (holding.get(trade.tokenMint) ?? 0) + amount);
+                tokenSupplyAtTime.set(trade.tokenMint, (tokenSupplyAtTime.get(trade.tokenMint) ?? 0) + amount);
+            }
+            else {
+                holding.set(trade.tokenMint, Math.max(0, (holding.get(trade.tokenMint) ?? 0) - amount));
+                tokenSupplyAtTime.set(trade.tokenMint, Math.max(0, (tokenSupplyAtTime.get(trade.tokenMint) ?? 0) - amount));
+            }
+            // Compute current portfolio value at end of this trade
+            let dayValue = 0;
+            for (const [mint, tokenAmt] of holding.entries()) {
+                if (tokenAmt <= 0)
+                    continue;
+                const token = tokenMap.get(mint);
+                if (!token)
+                    continue;
+                const pMax = Number(token.curveParamA) / 1e18;
+                const pMin = Number(token.curveParamB) / 1e18;
+                const gt = Number(token.graduationThreshold);
+                const supply = tokenSupplyAtTime.get(mint) ?? 0;
+                const price = (pMin > 0 && pMax > pMin && gt > 0)
+                    ? pMin * Math.pow(pMax / pMin, supply / gt)
+                    : pMax;
+                dayValue += tokenAmt * price;
+            }
+            // Keep highest value seen for this day
+            dayMap.set(dayKey, Math.max(dayMap.get(dayKey) ?? 0, dayValue));
+        }
+        const data = Array.from(dayMap.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([day, value]) => ({
+            time: Math.floor(new Date(day).getTime() / 1000),
+            value: Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : 0,
+        }));
+        // If there's only 1 day of history, lightweight-charts will just draw a flat line 
+        // or a dot. Add a 0 point for the day before their first trade to show an upward slope.
+        if (data.length === 1) {
+            data.unshift({
+                time: data[0].time - 86400,
+                value: 0,
+            });
+        }
+        return reply.send({ networth: data });
     });
 }
 //# sourceMappingURL=profiles.js.map

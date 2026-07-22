@@ -16,7 +16,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
-import { authenticateRequest } from '../lib/jwt';
+import { authenticateSession, SessionPayload } from '../lib/jwt';
 import { computeSpotPrice } from '../services/price';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +105,61 @@ async function buildProfileResponse(
   };
 }
 
+async function walletAliases(walletAddress: string): Promise<string[]> {
+  const wallet = walletAddress.toLowerCase();
+  const user = await (prisma as any).user.findFirst({
+    where: {
+      OR: [
+        { primaryWalletAddress: wallet },
+        { embeddedSignerAddress: wallet },
+        { smartAccountAddress: wallet },
+        { wallets: { some: { walletAddress: wallet } } },
+      ],
+    },
+    include: { wallets: { select: { walletAddress: true } } },
+  });
+
+  return [
+    wallet,
+    user?.primaryWalletAddress,
+    user?.embeddedSignerAddress,
+    user?.smartAccountAddress,
+    ...(user?.wallets?.map((w: { walletAddress: string }) => w.walletAddress) ?? []),
+  ]
+    .filter((alias): alias is string => typeof alias === 'string' && alias.length > 0)
+    .map((alias) => alias.toLowerCase())
+    .filter((alias, index, aliases) => aliases.indexOf(alias) === index);
+}
+
+async function findOnboardedProfileForWallet(walletAddress: string) {
+  const aliases = await walletAliases(walletAddress);
+  return prisma.profile.findFirst({
+    where: { walletAddress: { in: aliases }, onboarded: true },
+  });
+}
+
+async function sessionCanUseWallet(session: SessionPayload, walletAddress: string): Promise<boolean> {
+  const wallet = walletAddress.toLowerCase();
+  if (session.wallet?.toLowerCase() === wallet) return true;
+  if (!session.userId) return false;
+
+  const user = await (prisma as any).user.findUnique({
+    where: { id: session.userId },
+    include: { wallets: { select: { walletAddress: true } } },
+  });
+  if (!user) return false;
+
+  return [
+    user.primaryWalletAddress,
+    user.embeddedSignerAddress,
+    user.smartAccountAddress,
+    ...(user.wallets?.map((w: { walletAddress: string }) => w.walletAddress) ?? []),
+  ]
+    .filter(Boolean)
+    .map((alias: string) => alias.toLowerCase())
+    .includes(wallet);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Route plugin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,9 +200,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const { wallet } = req.params;
       const viewer = req.query.viewer;
 
-      const profile = await prisma.profile.findUnique({
-        where: { walletAddress: wallet },
-      });
+      const profile = await findOnboardedProfileForWallet(wallet);
 
       if (!profile || !profile.onboarded) {
         return reply.code(404).send({ error: 'Profile not found', code: 'NOT_FOUND' });
@@ -177,8 +230,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const { username, profilePicUri, coverUri } = parsed.data;
 
       // JWT authentication
-      const authenticatedWallet = authenticateRequest(req.headers.authorization);
-      if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== walletAddress) {
+      const session = authenticateSession(req.headers.authorization);
+      if (!session?.wallet || !(await sessionCanUseWallet(session, walletAddress))) {
         return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
@@ -191,14 +244,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
       const usernameLower = username.toLowerCase();
 
-      // Check profile already exists
-      const existing = await prisma.profile.findUnique({
-        where: { walletAddress },
-      });
-      if (existing?.onboarded) {
-        return reply
-          .code(409)
-          .send({ error: 'Profile already exists', code: 'ALREADY_EXISTS' });
+      // Check profile already exists under this wallet or any linked wallet alias
+      const existing = await findOnboardedProfileForWallet(walletAddress);
+      if (existing) {
+        return reply.send({ profile: await buildProfileResponse(existing, session.wallet) });
       }
 
       // Check username uniqueness
@@ -247,19 +296,21 @@ export async function profileRoutes(fastify: FastifyInstance) {
           .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
       }
 
-      const { walletAddress, username, profilePicUri, coverUri } = parsed.data;
+      const walletAddress = parsed.data.walletAddress.toLowerCase();
+      const { username, profilePicUri, coverUri } = parsed.data;
+      const walletParam = wallet.toLowerCase();
 
-      if (walletAddress !== wallet) {
+      if (walletAddress !== walletParam) {
         return reply.code(403).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
       // JWT authentication
-      const authenticatedWallet = authenticateRequest(req.headers.authorization);
-      if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+      const session = authenticateSession(req.headers.authorization);
+      if (!session?.wallet || !(await sessionCanUseWallet(session, walletAddress))) {
         return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
 
-      const profile = await prisma.profile.findUnique({ where: { walletAddress: wallet } });
+      const profile = await findOnboardedProfileForWallet(walletAddress);
       if (!profile || !profile.onboarded) {
         return reply.code(404).send({ error: 'Profile not found', code: 'NOT_FOUND' });
       }
@@ -276,7 +327,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
         const taken = await prisma.profile.findUnique({
           where: { username: usernameLower },
         });
-        if (taken && taken.walletAddress !== wallet) {
+        if (taken && taken.walletAddress !== profile.walletAddress) {
           return reply.code(409).send({ error: 'Username taken', code: 'USERNAME_TAKEN' });
         }
         updateData.username = usernameLower;
@@ -287,7 +338,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       if (parsed.data.bio !== undefined) updateData.bio = parsed.data.bio;
 
       const updated = await prisma.profile.update({
-        where: { walletAddress: wallet },
+        where: { walletAddress: profile.walletAddress },
         data: updateData,
       });
 
