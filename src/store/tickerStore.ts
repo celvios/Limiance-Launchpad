@@ -8,6 +8,7 @@ export interface TradeEvent {
   amount: number;
   solAmount: number;
   walletAddress: string;
+  walletHandle?: string | null;
   txSignature: string;
   timestamp: number;
   isWhale: boolean;

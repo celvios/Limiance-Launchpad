@@ -2,10 +2,13 @@
 
 import React, { memo, useState, useRef } from 'react';
 import Link from 'next/link';
+import { MessageCircle } from 'lucide-react';
 import { Sparkline } from '@/components/token/Sparkline';
 import { formatNumber, formatTimeAgo } from '@/lib/format';
 import { ipfsToGateway } from '@/lib/pinata';
 import type { TokenCardData } from '@/lib/types';
+import { WatchlistButton } from '@/components/social/WatchlistButton';
+import { useUIStore } from '@/store/uiStore';
 
 interface TokenCardProps extends TokenCardData {
   index?: number; // for stagger animation delay
@@ -19,6 +22,8 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
     description,
     creatorHandle,
     createdAt,
+    commentCount,
+    watchCount,
     marketCap,
     sparklineData,
     index = 0,
@@ -27,6 +32,7 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const openModal = useUIStore((s) => s.openModal);
 
 
 
@@ -189,6 +195,27 @@ export const TokenCard = memo(function TokenCard(props: TokenCardProps) {
           >
             {description}
           </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openModal('comment-modal', props);
+              }}
+              aria-label={`Comment on ${symbol}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 0, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+            >
+              <MessageCircle size={14} /> {commentCount ?? 0}
+            </button>
+            <div onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+              <WatchlistButton mint={mint} size={15} />
+            </div>
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+              {watchCount ?? 0} watching
+            </span>
+          </div>
         </div>
       </div>
     </Link>

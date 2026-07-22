@@ -711,6 +711,11 @@ export async function tokenRoutes(app: FastifyInstance) {
         };
       });
 
+      const traderProfile = await prisma.profile.findUnique({
+        where: { walletAddress: result.trade.walletAddress },
+        select: { username: true, usernameDisplay: true },
+      });
+
       broadcast({
         id: result.trade.id,
         type: result.trade.type,
@@ -719,6 +724,7 @@ export async function tokenRoutes(app: FastifyInstance) {
         amount: Number(result.trade.amount) / 1e6,
         solAmount: Number(result.trade.solAmount) / 1e6,
         walletAddress: result.trade.walletAddress,
+        walletHandle: traderProfile?.usernameDisplay || traderProfile?.username || null,
         txSignature: result.trade.txSignature,
         timestamp: new Date(result.trade.timestamp).getTime(),
         isWhale: result.trade.isWhale,

@@ -18,6 +18,7 @@ import type {
   TokenListResponse,
   TradeActivity,
   ChartDataPoint,
+  HomeActivity,
   ChartTimeRange,
   FeedQueryParams,
   ExploreQueryParams,
@@ -732,4 +733,11 @@ export async function fetchProfileNetworth(
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   const data = await res.json() as { networth: { time: number; value: number }[] };
   return data.networth;
+}
+
+export async function fetchHomeActivity(limit = 24): Promise<{ activities: HomeActivity[] }> {
+  if (USE_MOCK) return { activities: [] };
+  const res = await fetch(`${API_BASE_URL}/activity?limit=${limit}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<{ activities: HomeActivity[] }>;
 }

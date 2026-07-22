@@ -624,6 +624,10 @@ async function tokenRoutes(app) {
                     graduated: type === 'buy' && clampedFinalSupply >= token.graduationThreshold
                 };
             });
+            const traderProfile = await prisma_1.prisma.profile.findUnique({
+                where: { walletAddress: result.trade.walletAddress },
+                select: { username: true, usernameDisplay: true },
+            });
             (0, server_1.broadcast)({
                 id: result.trade.id,
                 type: result.trade.type,
@@ -632,6 +636,7 @@ async function tokenRoutes(app) {
                 amount: Number(result.trade.amount) / 1e6,
                 solAmount: Number(result.trade.solAmount) / 1e6,
                 walletAddress: result.trade.walletAddress,
+                walletHandle: traderProfile?.usernameDisplay || traderProfile?.username || null,
                 txSignature: result.trade.txSignature,
                 timestamp: new Date(result.trade.timestamp).getTime(),
                 isWhale: result.trade.isWhale,

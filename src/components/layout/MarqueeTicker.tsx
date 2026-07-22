@@ -1,139 +1,129 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useTickerStore } from '@/store/tickerStore';
 import { useQuery } from '@tanstack/react-query';
-import { fetchFeedTokens } from '@/lib/api';
+import { fetchFeedTokens, fetchHomeActivity } from '@/lib/api';
+import type { HomeActivity } from '@/lib/types';
 
 interface MarqueeItem {
   id: string;
-  type: 'new' | 'grad';
-  symbol: string;
-  creator?: string;
+  activity: HomeActivity;
 }
 
-/**
- * Horizontal scrolling marquee ticker — Limiance Exchange signature element.
- * Shows live token launches and graduations below the TopBar.
- */
+function actor(activity: HomeActivity): string {
+  return activity.username ? `@${activity.username}` : 'A user';
+}
+
+function activityText(activity: HomeActivity): string {
+  const symbol = activity.tokenSymbol ? `$${activity.tokenSymbol}` : 'a token';
+  switch (activity.type) {
+    case 'buy': return `${actor(activity)} bought ${activity.usdt?.toFixed(2) ?? '0.00'} USDT of ${symbol}`;
+    case 'sell': return `${actor(activity)} sold ${activity.usdt?.toFixed(2) ?? '0.00'} USDT of ${symbol}`;
+    case 'comment': return `${actor(activity)} commented on ${symbol}`;
+    case 'watch': return `${actor(activity)} is watching ${symbol}`;
+    case 'follow': return `${actor(activity)} followed ${activity.followingUsername ? `@${activity.followingUsername}` : 'a creator'}`;
+    case 'launch': return `${actor(activity)} launched ${symbol}`;
+    default: return `New activity on ${symbol}`;
+  }
+}
+
+function activityColor(type: HomeActivity['type']): string {
+  if (type === 'buy') return 'var(--buy)';
+  if (type === 'sell') return 'var(--sell)';
+  if (type === 'launch') return 'var(--brand)';
+  return 'var(--bg-elevated)';
+}
+
 export function MarqueeTicker() {
   const trades = useTickerStore((s) => s.trades);
-  
-  // Fetch real recent tokens as fallback/initial data
   const { data: recentTokens } = useQuery({
     queryKey: ['marqueeFallback'],
     queryFn: () => fetchFeedTokens({ filter: 'new', tags: [], limit: 10 }),
     staleTime: 60_000,
   });
+  const { data: recentActivity } = useQuery({
+    queryKey: ['homeActivity'],
+    queryFn: () => fetchHomeActivity(24),
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  });
 
-  // Build marquee items from recent trades — deduplicate by symbol
   const seen = new Set<string>();
   const items: MarqueeItem[] = [];
-  
-  // First add live trades from WebSocket
-  for (const trade of trades) {
-    if (seen.has(trade.tokenSymbol)) continue;
-    seen.add(trade.tokenSymbol);
-    items.push({
-      id: trade.id,
-      type: trade.type === 'buy' ? 'new' : 'new', // or map 'grad' if you have grad events
-      symbol: trade.tokenSymbol,
-      creator: trade.walletAddress?.slice(0, 6),
-    });
-    if (items.length >= 12) break;
+  for (const activity of recentActivity?.activities ?? []) {
+    if (seen.has(activity.id)) continue;
+    seen.add(activity.id);
+    items.push({ id: activity.id, activity });
+    if (items.length >= 16) break;
   }
 
-  // Then backfill with real tokens from the API if we don't have enough
-  if (items.length < 12 && recentTokens?.tokens) {
-    for (const token of recentTokens.tokens) {
-      if (seen.has(token.symbol)) continue;
-      seen.add(token.symbol);
+  for (const trade of trades) {
+    if (items.length >= 16 || seen.has(trade.id)) continue;
+    seen.add(trade.id);
+    items.push({
+      id: trade.id,
+      activity: {
+        id: trade.id,
+        type: trade.type,
+        timestamp: trade.timestamp,
+        walletAddress: trade.walletAddress,
+        username: trade.walletHandle ?? null,
+        tokenMint: trade.tokenMint,
+        tokenSymbol: trade.tokenSymbol,
+        tokenName: null,
+        amount: trade.amount,
+        usdt: trade.solAmount,
+      },
+    });
+  }
+
+  if (items.length < 16) {
+    for (const token of recentTokens?.tokens ?? []) {
+      if (items.length >= 16 || seen.has(token.mint)) continue;
+      seen.add(token.mint);
       items.push({
         id: token.mint,
-        type: token.status === 'graduated' ? 'grad' : 'new',
-        symbol: token.symbol,
-        creator: token.creatorWallet.slice(0, 6),
+        activity: {
+          id: token.mint,
+          type: 'launch',
+          timestamp: token.createdAt,
+          walletAddress: token.creatorWallet,
+          username: token.creatorHandle ?? null,
+          tokenMint: token.mint,
+          tokenSymbol: token.symbol,
+          tokenName: token.name,
+        },
       });
-      if (items.length >= 12) break;
     }
   }
 
-  // If literally nothing exists (empty DB and no trades), show empty array
-  const displayItems = items;
-
-  // Double items for seamless loop (only if we have items)
-  const doubled = displayItems.length > 0 ? [...displayItems, ...displayItems] : [];
-
+  const doubled = items.length > 0 ? [...items, ...items] : [];
   if (doubled.length === 0) {
-    return <div className="marquee-wrapper"><div className="marquee-track">Waiting for trades...</div></div>;
+    return <div className="marquee-wrapper"><div className="marquee-track">Waiting for activity...</div></div>;
   }
 
   return (
-    <div className="marquee-wrapper">
+    <div className="marquee-wrapper" aria-label="Recent platform activity">
       <div className="marquee-track">
-        {doubled.map((item, i) => (
-          <div
-            key={`${item.id}-${i}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-            }}
-          >
-            {/* Badge */}
-            <span
-              style={{
-                background: item.type === 'new' ? 'var(--brand)' : 'var(--graduation)',
-                color: item.type === 'new' ? '#FFFFFF' : '#000000',
-                fontSize: 10,
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 600,
-                padding: '2px 6px',
-                borderRadius: 'var(--radius-sm)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}
-            >
-              {item.type === 'new' ? '🟢 NEW' : '🎉 GRAD'}
-            </span>
-
-            {/* Token info */}
-            <span
-              style={{
-                fontFamily: 'var(--font-ui)',
-                fontSize: 13,
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                }}
-              >
-                ${item.symbol}
+        {doubled.map((item, index) => {
+          const content = (
+            <div key={`${item.id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <span style={{ background: activityColor(item.activity.type), color: item.activity.type === 'watch' || item.activity.type === 'follow' || item.activity.type === 'comment' ? 'var(--text-primary)' : '#FFFFFF', fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 600, padding: '2px 6px', borderRadius: 'var(--radius-sm)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {item.activity.type}
               </span>
-              {item.type === 'new'
-                ? ` just launched by @${item.creator}`
-                : ` graduated to PancakeSwap`}
-            </span>
-
-            {/* Separator dot */}
-            <span
-              style={{
-                color: 'var(--text-muted)',
-                fontSize: 10,
-              }}
-            >
-              ·
-            </span>
-          </div>
-        ))}
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-secondary)' }}>
+                {activityText(item.activity)}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>.</span>
+            </div>
+          );
+          return item.activity.tokenMint ? (
+            <Link key={`${item.id}-${index}`} href={`/token/${item.activity.tokenMint}`} style={{ textDecoration: 'none' }}>{content}</Link>
+          ) : content;
+        })}
       </div>
     </div>
   );
 }
-

@@ -100,6 +100,23 @@ export interface TradeActivity {
   pricePerToken?: number;
 }
 
+export type HomeActivityType = 'buy' | 'sell' | 'launch' | 'comment' | 'follow' | 'watch';
+
+export interface HomeActivity {
+  id: string;
+  type: HomeActivityType;
+  timestamp: number;
+  walletAddress: string;
+  username: string | null;
+  tokenMint: string | null;
+  tokenSymbol: string | null;
+  tokenName: string | null;
+  amount?: number;
+  usdt?: number;
+  followingWallet?: string;
+  followingUsername?: string | null;
+}
+
 export interface ChartDataPoint {
   time: number; // unix seconds
   open: number;
