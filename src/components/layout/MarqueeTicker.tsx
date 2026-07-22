@@ -4,8 +4,9 @@ import React from 'react';
 import Link from 'next/link';
 import { useTickerStore } from '@/store/tickerStore';
 import { useQuery } from '@tanstack/react-query';
-import { fetchFeedTokens, fetchHomeActivity } from '@/lib/api';
+import { fetchHomeActivity } from '@/lib/api';
 import type { HomeActivity } from '@/lib/types';
+import { useWatchlistStore } from '@/store/watchlistStore';
 
 interface MarqueeItem {
   id: string;
@@ -38,21 +39,21 @@ function activityColor(type: HomeActivity['type']): string {
 
 export function MarqueeTicker() {
   const trades = useTickerStore((s) => s.trades);
-  const { data: recentTokens } = useQuery({
-    queryKey: ['marqueeFallback'],
-    queryFn: () => fetchFeedTokens({ filter: 'new', tags: [], limit: 10 }),
-    staleTime: 60_000,
-  });
+  const watchedMints = useWatchlistStore((s) => s.watchlist);
   const { data: recentActivity } = useQuery({
-    queryKey: ['homeActivity'],
+    queryKey: ['homeActivity', watchedMints],
     queryFn: () => fetchHomeActivity(24),
+    enabled: watchedMints.length > 0,
     refetchInterval: 15_000,
     staleTime: 5_000,
   });
 
   const seen = new Set<string>();
   const items: MarqueeItem[] = [];
+  const isWatched = (activity: HomeActivity) => Boolean(activity.tokenMint && watchedMints.includes(activity.tokenMint));
+
   for (const activity of recentActivity?.activities ?? []) {
+    if (!isWatched(activity)) continue;
     if (seen.has(activity.id)) continue;
     seen.add(activity.id);
     items.push({ id: activity.id, activity });
@@ -60,6 +61,7 @@ export function MarqueeTicker() {
   }
 
   for (const trade of trades) {
+    if (!watchedMints.includes(trade.tokenMint)) continue;
     if (items.length >= 16 || seen.has(trade.id)) continue;
     seen.add(trade.id);
     items.push({
@@ -79,29 +81,9 @@ export function MarqueeTicker() {
     });
   }
 
-  if (items.length < 16) {
-    for (const token of recentTokens?.tokens ?? []) {
-      if (items.length >= 16 || seen.has(token.mint)) continue;
-      seen.add(token.mint);
-      items.push({
-        id: token.mint,
-        activity: {
-          id: token.mint,
-          type: 'launch',
-          timestamp: token.createdAt,
-          walletAddress: token.creatorWallet,
-          username: token.creatorHandle ?? null,
-          tokenMint: token.mint,
-          tokenSymbol: token.symbol,
-          tokenName: token.name,
-        },
-      });
-    }
-  }
-
   const doubled = items.length > 0 ? [...items, ...items] : [];
   if (doubled.length === 0) {
-    return <div className="marquee-wrapper"><div className="marquee-track">Waiting for activity...</div></div>;
+    return <div className="marquee-wrapper"><div className="marquee-track">Watch a token to see its activity...</div></div>;
   }
 
   return (
