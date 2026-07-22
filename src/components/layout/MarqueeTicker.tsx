@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTickerStore } from '@/store/tickerStore';
 import { useQuery } from '@tanstack/react-query';
@@ -14,8 +14,7 @@ interface MarqueeItem {
 }
 
 function actor(activity: HomeActivity): string {
-  if (activity.username) return `@${activity.username}`;
-  return '@unknown';
+  return activity.username ? `@${activity.username}` : '';
 }
 
 function commentPreview(activity: HomeActivity): string {
@@ -44,6 +43,7 @@ function activityColor(type: HomeActivity['type']): string {
 }
 
 export function MarqueeTicker() {
+  const [now, setNow] = useState(() => Date.now());
   const trades = useTickerStore((s) => s.trades);
   const watchedMints = useWatchlistStore((s) => s.watchlist);
   const { data: recentActivity } = useQuery({
@@ -54,12 +54,18 @@ export function MarqueeTicker() {
     staleTime: 5_000,
   });
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const seen = new Set<string>();
   const items: MarqueeItem[] = [];
   const isWatched = (activity: HomeActivity) => Boolean(activity.tokenMint && watchedMints.includes(activity.tokenMint));
 
   for (const activity of recentActivity?.activities ?? []) {
     if (!isWatched(activity)) continue;
+    if (!activity.username) continue;
     if (seen.has(activity.id)) continue;
     seen.add(activity.id);
     items.push({ id: activity.id, activity });
@@ -68,6 +74,8 @@ export function MarqueeTicker() {
 
   for (const trade of trades) {
     if (!watchedMints.includes(trade.tokenMint)) continue;
+    if (!trade.walletHandle) continue;
+    if (trade.timestamp < now - 30_000) continue;
     if (items.length >= 16 || seen.has(trade.id)) continue;
     seen.add(trade.id);
     items.push({
