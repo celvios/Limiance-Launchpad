@@ -115,6 +115,7 @@ export interface HomeActivity {
   usdt?: number;
   followingWallet?: string;
   followingUsername?: string | null;
+  commentPreview?: string;
 }
 
 export interface ChartDataPoint {

@@ -39,7 +39,7 @@ export async function activityRoutes(app: FastifyInstance) {
       }),
       prisma.comment.findMany({
         where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take,
-        select: { id: true, walletAddress: true, tokenMint: true, createdAt: true },
+        select: { id: true, walletAddress: true, tokenMint: true, message: true, createdAt: true },
       }),
       prisma.follow.findMany({
         where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take,
@@ -64,12 +64,18 @@ export async function activityRoutes(app: FastifyInstance) {
       ...follows.flatMap((item) => [item.followerWallet, item.followingWallet]),
       ...launches.map((item) => item.creator),
     ])];
+    const profileWhere = walletAddresses.length > 0
+      ? { OR: walletAddresses.map((walletAddress) => ({ walletAddress: { equals: walletAddress, mode: 'insensitive' as const } })) }
+      : { walletAddress: { in: [] as string[] } };
     const [tokenRows, profiles] = await Promise.all([
       prisma.token.findMany({ where: { mint: { in: tokenMints } }, select: { mint: true, symbol: true, name: true } }),
-      prisma.profile.findMany({ where: { walletAddress: { in: walletAddresses } }, select: { walletAddress: true, username: true, usernameDisplay: true } }),
+      prisma.profile.findMany({ where: profileWhere, select: { walletAddress: true, username: true, usernameDisplay: true } }),
     ]);
     const tokenMap = new Map(tokenRows.map((item) => [item.mint, item]));
-    const profileMap = new Map(profiles.map((item) => [item.walletAddress, item.usernameDisplay || item.username]));
+    // Wallet casing can differ between signed activity and profile creation.
+    // Normalize lookup keys so a valid username is not lost to checksum casing.
+    const profileMap = new Map(profiles.map((item) => [item.walletAddress.toLowerCase(), item.usernameDisplay || item.username]));
+    const usernameFor = (walletAddress: string) => profileMap.get(walletAddress.toLowerCase()) ?? null;
     const makeToken = (mint: string) => {
       const token = tokenMap.get(mint);
       return { tokenMint: mint, tokenSymbol: token?.symbol ?? null, tokenName: token?.name ?? null };
@@ -78,28 +84,29 @@ export async function activityRoutes(app: FastifyInstance) {
     const activities = [
       ...trades.map((item) => ({
         id: `trade:${item.id}`, type: item.type, timestamp: item.timestamp.getTime(),
-        walletAddress: item.walletAddress, username: profileMap.get(item.walletAddress) ?? null,
+        walletAddress: item.walletAddress, username: usernameFor(item.walletAddress),
         ...makeToken(item.tokenMint), amount: Number(item.amount) / 1e6, usdt: Number(item.solAmount) / 1e6,
       })),
       ...launches.map((item) => ({
         id: `launch:${item.mint}`, type: 'launch', timestamp: item.createdAt.getTime(),
-        walletAddress: item.creator, username: profileMap.get(item.creator) ?? null,
+        walletAddress: item.creator, username: usernameFor(item.creator),
         tokenMint: item.mint, tokenSymbol: item.symbol, tokenName: item.name,
       })),
       ...comments.map((item) => ({
         id: `comment:${item.id}`, type: 'comment', timestamp: item.createdAt.getTime(),
-        walletAddress: item.walletAddress, username: profileMap.get(item.walletAddress) ?? null,
+        walletAddress: item.walletAddress, username: usernameFor(item.walletAddress),
+        commentPreview: item.message.replace(/\s+/g, ' ').trim().slice(0, 120),
         ...makeToken(item.tokenMint),
       })),
       ...follows.map((item) => ({
         id: `follow:${item.id}`, type: 'follow', timestamp: item.createdAt.getTime(),
-        walletAddress: item.followerWallet, username: profileMap.get(item.followerWallet) ?? null,
-        followingWallet: item.followingWallet, followingUsername: profileMap.get(item.followingWallet) ?? null,
+        walletAddress: item.followerWallet, username: usernameFor(item.followerWallet),
+        followingWallet: item.followingWallet, followingUsername: usernameFor(item.followingWallet),
         tokenMint: null, tokenSymbol: null, tokenName: null,
       })),
       ...watches.map((item) => ({
         id: `watch:${item.id}`, type: 'watch', timestamp: item.createdAt.getTime(),
-        walletAddress: item.walletAddress, username: profileMap.get(item.walletAddress) ?? null,
+        walletAddress: item.walletAddress, username: usernameFor(item.walletAddress),
         ...makeToken(item.tokenMint),
       })),
     ]

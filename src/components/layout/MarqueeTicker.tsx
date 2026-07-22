@@ -14,7 +14,13 @@ interface MarqueeItem {
 }
 
 function actor(activity: HomeActivity): string {
-  return activity.username ? `@${activity.username}` : 'A user';
+  if (activity.username) return `@${activity.username}`;
+  return '@unknown';
+}
+
+function commentPreview(activity: HomeActivity): string {
+  if (!activity.commentPreview) return '';
+  return `: "${activity.commentPreview}${activity.commentPreview.length >= 120 ? '...' : ''}"`;
 }
 
 function activityText(activity: HomeActivity): string {
@@ -22,7 +28,7 @@ function activityText(activity: HomeActivity): string {
   switch (activity.type) {
     case 'buy': return `${actor(activity)} bought ${activity.usdt?.toFixed(2) ?? '0.00'} USDT of ${symbol}`;
     case 'sell': return `${actor(activity)} sold ${activity.usdt?.toFixed(2) ?? '0.00'} USDT of ${symbol}`;
-    case 'comment': return `${actor(activity)} commented on ${symbol}`;
+    case 'comment': return `${actor(activity)} commented on ${symbol}${commentPreview(activity)}`;
     case 'watch': return `${actor(activity)} is watching ${symbol}`;
     case 'follow': return `${actor(activity)} followed ${activity.followingUsername ? `@${activity.followingUsername}` : 'a creator'}`;
     case 'launch': return `${actor(activity)} launched ${symbol}`;
