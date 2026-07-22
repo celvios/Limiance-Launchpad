@@ -1,1 +1,1 @@
-{"version":3,"file":"deposits.d.ts","sourceRoot":"","sources":["../../src/routes/deposits.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAmL1C,wBAAsB,aAAa,CAAC,GAAG,EAAE,eAAe,iBAinBvD"}
+{"version":3,"file":"deposits.d.ts","sourceRoot":"","sources":["../../src/routes/deposits.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AA6K1C,wBAAsB,aAAa,CAAC,GAAG,EAAE,eAAe,iBAwnBvD"}

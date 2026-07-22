@@ -4,6 +4,7 @@ import { prisma } from '../services/prisma';
 import { BSC_CHAIN_ID, normalizeAddress, TOKEN_CREATION_FEE_USDT, PAYMENT_ASSET } from '../services/bsc';
 import { authenticateSession } from '../lib/jwt';
 import { broadcast } from '../ws/server';
+import { requireAdmin, writeAdminAudit } from '../lib/adminAuth';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -763,10 +764,8 @@ export async function tokenRoutes(app: FastifyInstance) {
   // Admin-only: resets a stuck token back to 'active' for testing/recovery.
   // Pass ?resetSupply=true to also zero out currentSupply (fixes corrupted scale data).
   app.post('/api/admin/tokens/:address/reset-status', async (req, reply) => {
-    const secret = (req.headers['x-admin-secret'] as string) ?? '';
-    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
+    const admin = await requireAdmin(req, ['token_admin']);
+    if (!admin) return reply.code(403).send({ error: 'Forbidden' });
 
     const { address: tokenAddressParam } = req.params as { address: string };
     const tokenAddress = tokenAddressParam.toLowerCase();
@@ -785,16 +784,16 @@ export async function tokenRoutes(app: FastifyInstance) {
       },
     });
 
+    await writeAdminAudit({ adminUserId: admin.id, action: 'token.reset_status', targetType: 'token', targetId: token.mint, reason: 'Administrative token recovery', metadata: { resetSupply: resetSupply === 'true' }, ipAddress: req.ip });
+
     return reply.send({ success: true, id: updated.id, status: updated.status, currentSupply: updated.currentSupply.toString() });
   });
 
   // ── GET /api/admin/diagnose ───────────────────────────────────────────────────
   // Returns full DB state for debugging. Protected by admin secret.
   app.get('/api/admin/diagnose', async (req, reply) => {
-    const secret = (req.headers['x-admin-secret'] as string) ?? '';
-    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
+    const admin = await requireAdmin(req, ['support_admin', 'token_admin', 'finance_admin']);
+    if (!admin) return reply.code(403).send({ error: 'Forbidden' });
 
     const tokens = await prisma.token.findMany({
       select: {
@@ -861,10 +860,8 @@ export async function tokenRoutes(app: FastifyInstance) {
   // Recomputes token.currentSupply from the sum of all buy/sell trades.
   // Also fixes UserTokenBalance by recomputing from trades per wallet.
   app.post('/api/admin/fix-supply', async (req, reply) => {
-    const secret = (req.headers['x-admin-secret'] as string) ?? '';
-    if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
+    const admin = await requireAdmin(req, ['token_admin']);
+    if (!admin) return reply.code(403).send({ error: 'Forbidden' });
 
     const tokens = await prisma.token.findMany({ select: { id: true, mint: true, symbol: true } });
     const results = [];
@@ -922,6 +919,7 @@ export async function tokenRoutes(app: FastifyInstance) {
       });
     }
 
+    await writeAdminAudit({ adminUserId: admin.id, action: 'token.fix_supply', targetType: 'system', targetId: 'all_tokens', reason: 'Administrative supply reconciliation', metadata: { tokenCount: results.length }, ipAddress: req.ip });
     return reply.send({ success: true, results });
   });
 }

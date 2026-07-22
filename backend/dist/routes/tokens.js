@@ -6,6 +6,7 @@ const prisma_1 = require("../services/prisma");
 const bsc_1 = require("../services/bsc");
 const jwt_1 = require("../lib/jwt");
 const server_1 = require("../ws/server");
+const adminAuth_1 = require("../lib/adminAuth");
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DeployBody = zod_1.z.object({
     creator: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -671,10 +672,9 @@ async function tokenRoutes(app) {
     // Admin-only: resets a stuck token back to 'active' for testing/recovery.
     // Pass ?resetSupply=true to also zero out currentSupply (fixes corrupted scale data).
     app.post('/api/admin/tokens/:address/reset-status', async (req, reply) => {
-        const secret = req.headers['x-admin-secret'] ?? '';
-        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+        const admin = await (0, adminAuth_1.requireAdmin)(req, ['token_admin']);
+        if (!admin)
             return reply.code(403).send({ error: 'Forbidden' });
-        }
         const { address: tokenAddressParam } = req.params;
         const tokenAddress = tokenAddressParam.toLowerCase();
         const { resetSupply } = req.query;
@@ -690,15 +690,15 @@ async function tokenRoutes(app) {
                 ...(resetSupply === 'true' ? { currentSupply: 0n } : {}),
             },
         });
+        await (0, adminAuth_1.writeAdminAudit)({ adminUserId: admin.id, action: 'token.reset_status', targetType: 'token', targetId: token.mint, reason: 'Administrative token recovery', metadata: { resetSupply: resetSupply === 'true' }, ipAddress: req.ip });
         return reply.send({ success: true, id: updated.id, status: updated.status, currentSupply: updated.currentSupply.toString() });
     });
     // ── GET /api/admin/diagnose ───────────────────────────────────────────────────
     // Returns full DB state for debugging. Protected by admin secret.
     app.get('/api/admin/diagnose', async (req, reply) => {
-        const secret = req.headers['x-admin-secret'] ?? '';
-        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+        const admin = await (0, adminAuth_1.requireAdmin)(req, ['support_admin', 'token_admin', 'finance_admin']);
+        if (!admin)
             return reply.code(403).send({ error: 'Forbidden' });
-        }
         const tokens = await prisma_1.prisma.token.findMany({
             select: {
                 mint: true, symbol: true, name: true,
@@ -761,10 +761,9 @@ async function tokenRoutes(app) {
     // Recomputes token.currentSupply from the sum of all buy/sell trades.
     // Also fixes UserTokenBalance by recomputing from trades per wallet.
     app.post('/api/admin/fix-supply', async (req, reply) => {
-        const secret = req.headers['x-admin-secret'] ?? '';
-        if (secret !== (process.env.ADMIN_SECRET ?? 'limiance-admin')) {
+        const admin = await (0, adminAuth_1.requireAdmin)(req, ['token_admin']);
+        if (!admin)
             return reply.code(403).send({ error: 'Forbidden' });
-        }
         const tokens = await prisma_1.prisma.token.findMany({ select: { id: true, mint: true, symbol: true } });
         const results = [];
         for (const token of tokens) {
@@ -812,6 +811,7 @@ async function tokenRoutes(app) {
                 wallets: walletResults,
             });
         }
+        await (0, adminAuth_1.writeAdminAudit)({ adminUserId: admin.id, action: 'token.fix_supply', targetType: 'system', targetId: 'all_tokens', reason: 'Administrative supply reconciliation', metadata: { tokenCount: results.length }, ipAddress: req.ip });
         return reply.send({ success: true, results });
     });
 }

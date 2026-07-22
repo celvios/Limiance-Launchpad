@@ -16,6 +16,7 @@ import { commentRoutes } from './routes/comments';
 import { followRoutes } from './routes/follows';
 import { depositRoutes } from './routes/deposits';
 import { reportRoutes } from './routes/reports';
+import { adminAuthRoutes } from './routes/adminAuth';
 import { prisma } from './services/prisma';
 import { assertProductionConfig } from './services/production';
 import { addClient, removeClient } from './ws/server';
@@ -80,6 +81,7 @@ async function main() {
   await app.register(followRoutes);
   await app.register(depositRoutes);
   await app.register(reportRoutes);
+  await app.register(adminAuthRoutes);
 
   // ── WebSocket endpoint ───────────────────────────────────────────────────────
 

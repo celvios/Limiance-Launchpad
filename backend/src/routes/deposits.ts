@@ -11,6 +11,7 @@ import {
   predictVaultAddress,
 } from '../services/bsc';
 import { authenticateSession } from '../lib/jwt';
+import { requireAdmin, writeAdminAudit } from '../lib/adminAuth';
 
 const DepositAddressQuery = z.object({
   wallet: z.string().optional(),
@@ -51,13 +52,6 @@ function isDuplicateRecordError(error: unknown): boolean {
 
 function devCreditRoutesEnabled(): boolean {
   return process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_CREDIT_ROUTES === 'true';
-}
-
-function requireAdminSecret(req: { headers: Record<string, unknown> }): string | null {
-  const expected = process.env.ADMIN_SECRET;
-  if (!expected) return 'Admin secret is not configured';
-  const provided = req.headers['x-admin-secret'];
-  return provided === expected ? null : 'Forbidden';
 }
 
 function serializeBalance(row: any) {
@@ -316,10 +310,8 @@ export async function depositRoutes(app: FastifyInstance) {
 
   // ── Admin-only: Mint USDT to any wallet ──────────────────────────────────────
   app.post('/api/deposits/admin-mint', async (req, reply) => {
-    const adminError = requireAdminSecret(req);
-    if (adminError) {
-      return reply.code(adminError === 'Forbidden' ? 403 : 503).send({ error: adminError });
-    }
+    const admin = await requireAdmin(req, ['finance_admin']);
+    if (!admin) return reply.code(403).send({ error: 'Forbidden' });
 
     const body = z.object({
       wallet: z.string(),
@@ -352,6 +344,15 @@ export async function depositRoutes(app: FastifyInstance) {
       },
     });
 
+    await writeAdminAudit({
+      adminUserId: admin.id,
+      action: 'balance.admin_mint',
+      targetType: 'wallet',
+      targetId: walletAddress,
+      reason: 'Administrative balance credit',
+      metadata: { amount: body.data.amount, asset: PAYMENT_ASSET },
+      ipAddress: req.ip,
+    });
     return reply.send({ success: true, wallet: walletAddress, credited: body.data.amount });
   });
 

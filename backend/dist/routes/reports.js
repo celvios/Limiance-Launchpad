@@ -4,6 +4,7 @@ exports.reportRoutes = reportRoutes;
 const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const jwt_1 = require("../lib/jwt");
+const adminAuth_1 = require("../lib/adminAuth");
 const TargetType = zod_1.z.enum(['comment', 'token', 'profile']);
 const Reason = zod_1.z.enum([
     'spam',
@@ -33,11 +34,6 @@ const reasonMap = {
     token: new Set(['spam', 'scam', 'fraud_or_impersonation', 'market_manipulation', 'inappropriate_content', 'duplicate', 'other']),
     profile: new Set(['spam', 'scam', 'harassment', 'hate_or_abuse', 'fraud_or_impersonation', 'inappropriate_content', 'other']),
 };
-function adminAuthorized(request) {
-    const configured = process.env.ADMIN_SECRET;
-    const provided = request.headers['x-admin-secret'];
-    return Boolean(configured && typeof provided === 'string' && provided === configured);
-}
 async function targetExists(targetType, targetId) {
     if (targetType === 'comment')
         return Boolean(await prisma_1.prisma.comment.findUnique({ where: { id: targetId }, select: { id: true } }));
@@ -95,7 +91,8 @@ async function reportRoutes(app) {
         }
     });
     app.get('/api/admin/reports', async (request, reply) => {
-        if (!adminAuthorized(request))
+        const admin = await (0, adminAuth_1.requireAdmin)(request, ['moderation_admin', 'support_admin', 'viewer']);
+        if (!admin)
             return reply.code(403).send({ error: 'Forbidden' });
         const query = request.query;
         const limit = Math.min(Math.max(Number(query.limit ?? 50) || 50, 1), 100);
@@ -113,7 +110,6 @@ async function reportRoutes(app) {
             by: ['targetType', 'targetId'],
             _count: { _all: true },
             where: {
-                ...(query.status ? { status: query.status } : {}),
                 ...(query.targetType ? { targetType: query.targetType } : {}),
             },
         });
@@ -126,15 +122,18 @@ async function reportRoutes(app) {
         });
     });
     app.patch('/api/admin/reports/:id', async (request, reply) => {
-        if (!adminAuthorized(request))
+        const admin = await (0, adminAuth_1.requireAdmin)(request, ['moderation_admin']);
+        if (!admin)
             return reply.code(403).send({ error: 'Forbidden' });
         const parsed = AdminStatusBody.safeParse(request.body);
         if (!parsed.success)
             return reply.code(400).send({ error: 'Invalid moderation update', code: 'INVALID_UPDATE' });
+        const reportId = request.params.id;
         const report = await prisma_1.prisma.report.update({
-            where: { id: request.params.id },
+            where: { id: reportId },
             data: { status: parsed.data.status, resolution: parsed.data.resolution || null, reviewedBy: 'admin', reviewedAt: new Date() },
         });
+        await (0, adminAuth_1.writeAdminAudit)({ adminUserId: admin.id, action: 'report.update', targetType: report.targetType, targetId: report.targetId, reason: parsed.data.resolution, metadata: { reportId, status: parsed.data.status }, ipAddress: request.ip });
         return reply.send({ report });
     });
 }

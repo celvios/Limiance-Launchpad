@@ -6,6 +6,7 @@ const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const bsc_1 = require("../services/bsc");
 const jwt_1 = require("../lib/jwt");
+const adminAuth_1 = require("../lib/adminAuth");
 const DepositAddressQuery = zod_1.z.object({
     wallet: zod_1.z.string().optional(),
     asset: zod_1.z.string().default(bsc_1.PAYMENT_ASSET),
@@ -39,13 +40,6 @@ function isDuplicateRecordError(error) {
 }
 function devCreditRoutesEnabled() {
     return process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_CREDIT_ROUTES === 'true';
-}
-function requireAdminSecret(req) {
-    const expected = process.env.ADMIN_SECRET;
-    if (!expected)
-        return 'Admin secret is not configured';
-    const provided = req.headers['x-admin-secret'];
-    return provided === expected ? null : 'Forbidden';
 }
 function serializeBalance(row) {
     return {
@@ -263,10 +257,9 @@ async function depositRoutes(app) {
     });
     // ── Admin-only: Mint USDT to any wallet ──────────────────────────────────────
     app.post('/api/deposits/admin-mint', async (req, reply) => {
-        const adminError = requireAdminSecret(req);
-        if (adminError) {
-            return reply.code(adminError === 'Forbidden' ? 403 : 503).send({ error: adminError });
-        }
+        const admin = await (0, adminAuth_1.requireAdmin)(req, ['finance_admin']);
+        if (!admin)
+            return reply.code(403).send({ error: 'Forbidden' });
         const body = zod_1.z.object({
             wallet: zod_1.z.string(),
             amount: zod_1.z.number().positive(), // USDT amount (e.g. 100000)
@@ -293,6 +286,15 @@ async function depositRoutes(app) {
                 asset: bsc_1.PAYMENT_ASSET,
                 available: amountRaw.toString(),
             },
+        });
+        await (0, adminAuth_1.writeAdminAudit)({
+            adminUserId: admin.id,
+            action: 'balance.admin_mint',
+            targetType: 'wallet',
+            targetId: walletAddress,
+            reason: 'Administrative balance credit',
+            metadata: { amount: body.data.amount, asset: bsc_1.PAYMENT_ASSET },
+            ipAddress: req.ip,
         });
         return reply.send({ success: true, wallet: walletAddress, credited: body.data.amount });
     });
