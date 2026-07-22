@@ -7,6 +7,7 @@ import { addTokenToWatchlist, removeTokenFromWatchlist } from '@/lib/api';
 import { getAuthToken } from '@/lib/session';
 import { useWallet } from '@/providers/BscWalletProvider';
 import { useWatchlistStore } from '@/store/watchlistStore';
+import { useUIStore } from '@/store/uiStore';
 
 interface WatchlistButtonProps {
   mint: string;
@@ -17,6 +18,7 @@ export function WatchlistButton({ mint, size = 18 }: WatchlistButtonProps) {
   const { isWatching, toggle } = useWatchlistStore();
   const { address } = useWallet();
   const queryClient = useQueryClient();
+  const addToast = useUIStore((s) => s.addToast);
   const [isAnimating, setIsAnimating] = useState(false);
   const watched = isWatching(mint);
 
@@ -46,6 +48,10 @@ export function WatchlistButton({ mint, size = 18 }: WatchlistButtonProps) {
       ]);
     } catch (error) {
       toggle(mint);
+      addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Unable to update watchlist',
+      });
       console.error('[WatchlistButton] Failed to sync watchlist:', error);
     }
   };

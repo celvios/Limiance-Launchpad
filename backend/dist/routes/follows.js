@@ -27,12 +27,13 @@ async function followRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { followerWallet, followingWallet } = parsed.data;
+        const followerWallet = parsed.data.followerWallet.toLowerCase();
+        const followingWallet = parsed.data.followingWallet.toLowerCase();
         if (followerWallet === followingWallet) {
             return reply.code(400).send({ error: 'Cannot follow yourself', code: 'INVALID_FOLLOW' });
         }
         const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== followerWallet) {
+        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== followerWallet) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         await prisma_1.prisma.follow.upsert({
@@ -52,9 +53,10 @@ async function followRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { followerWallet, followingWallet } = parsed.data;
+        const followerWallet = parsed.data.followerWallet.toLowerCase();
+        const followingWallet = parsed.data.followingWallet.toLowerCase();
         const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== followerWallet) {
+        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== followerWallet) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         await prisma_1.prisma.follow
@@ -68,7 +70,7 @@ async function followRoutes(fastify) {
     });
     // ── Get watchlist ─────────────────────────────────────────────────────────
     fastify.get('/api/watchlist/:wallet', async (req, reply) => {
-        const { wallet } = req.params;
+        const wallet = req.params.wallet.toLowerCase();
         const entries = await prisma_1.prisma.watchlist.findMany({
             where: { walletAddress: wallet },
             orderBy: { createdAt: 'desc' },
@@ -83,10 +85,23 @@ async function followRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { walletAddress, tokenMint } = parsed.data;
+        const walletAddress = parsed.data.walletAddress.toLowerCase();
+        const { tokenMint } = parsed.data;
         const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== walletAddress) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+        }
+        // A watch event must have a stable username. Do not create orphaned
+        // watchlist activity for authenticated wallets that have not onboarded.
+        const profile = await prisma_1.prisma.profile.findUnique({
+            where: { walletAddress },
+            select: { onboarded: true },
+        });
+        if (!profile?.onboarded) {
+            return reply.code(409).send({
+                error: 'Complete your profile before watching tokens',
+                code: 'PROFILE_REQUIRED',
+            });
         }
         // Verify token exists
         const token = await prisma_1.prisma.token.findUnique({ where: { mint: tokenMint } });
@@ -108,9 +123,10 @@ async function followRoutes(fastify) {
                 .code(400)
                 .send({ error: parsed.error.issues[0]?.message ?? 'Invalid body', code: 'INVALID_BODY' });
         }
-        const { walletAddress, tokenMint } = parsed.data;
+        const walletAddress = parsed.data.walletAddress.toLowerCase();
+        const { tokenMint } = parsed.data;
         const authenticatedWallet = (0, jwt_1.authenticateRequest)(req.headers.authorization);
-        if (!authenticatedWallet || authenticatedWallet !== walletAddress) {
+        if (!authenticatedWallet || authenticatedWallet.toLowerCase() !== walletAddress) {
             return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
         }
         await prisma_1.prisma.watchlist
