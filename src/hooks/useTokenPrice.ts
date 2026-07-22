@@ -85,6 +85,9 @@ export function useTokenPrice(mint: string) {
     // Also invalidate to get real data on next poll
     queryClient.invalidateQueries({ queryKey: ['token-detail', mint] });
     queryClient.invalidateQueries({ queryKey: ['chart-data', mint] });
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    queryClient.invalidateQueries({ queryKey: ['explore'] });
+    queryClient.invalidateQueries({ queryKey: ['featured-tokens'] });
   }, [mint, recentTradeForToken, queryClient]);
 
   useEffect(() => {

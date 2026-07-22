@@ -31,6 +31,21 @@ const VerifyEmailBody = zod_1.z.object({
     embeddedSignerAddress: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
     smartAccountAddress: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 });
+function publicUser(user, sessionWallet) {
+    return {
+        token: (0, jwt_1.signToken)(sessionWallet, {
+            userId: user.id,
+            email: user.email ?? undefined,
+            authType: user.authType ?? 'wallet',
+        }),
+        wallet: sessionWallet,
+        userId: user.id,
+        email: user.email ?? undefined,
+        authType: user.authType ?? 'wallet',
+        embeddedSignerAddress: user.embeddedSignerAddress ?? null,
+        smartAccountAddress: user.smartAccountAddress ?? null,
+    };
+}
 function isTimestampFresh(timestamp) {
     return Math.abs(Date.now() - timestamp) <= 5 * 60 * 1000;
 }
@@ -69,16 +84,27 @@ async function authRoutes(fastify) {
         if (!(0, auth_1.verifyEvmPersonalSignature)(normalizedWallet, message, signature)) {
             return reply.code(401).send({ error: 'Invalid wallet signature', code: 'INVALID_SIGNATURE' });
         }
+        const existingUser = await prisma_1.prisma.user.findUnique({
+            where: { primaryWalletAddress: normalizedWallet },
+        });
+        if (normalizedSmartAccount &&
+            existingUser?.smartAccountAddress &&
+            existingUser.smartAccountAddress !== normalizedSmartAccount) {
+            return reply.code(409).send({ error: 'Smart account mismatch for wallet', code: 'SMART_ACCOUNT_MISMATCH' });
+        }
         const user = await prisma_1.prisma.user.upsert({
             where: { primaryWalletAddress: normalizedWallet },
             update: {
                 ...(email && { email }),
+                ...(email && { authType: 'email' }),
+                ...(email && { embeddedSignerAddress: normalizedWallet }),
                 ...(normalizedSmartAccount && { smartAccountAddress: normalizedSmartAccount }),
             },
             create: {
                 primaryWalletAddress: normalizedWallet,
-                authType: 'wallet',
+                authType: email ? 'email' : 'wallet',
                 ...(email && { email }),
+                ...(email && { embeddedSignerAddress: normalizedWallet }),
                 ...(normalizedSmartAccount && { smartAccountAddress: normalizedSmartAccount }),
                 wallets: {
                     create: [
@@ -94,8 +120,7 @@ async function authRoutes(fastify) {
                 },
             },
         });
-        const token = (0, jwt_1.signToken)(normalizedSmartAccount || normalizedWallet, { userId: user.id, authType: 'wallet' });
-        return reply.send({ token, wallet: normalizedSmartAccount || normalizedWallet, userId: user.id, authType: 'wallet' });
+        return reply.send(publicUser(user, normalizedWallet));
     });
     fastify.post('/api/auth/email/request-otp', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
         const parsed = RequestEmailBody.safeParse(req.body);
@@ -135,55 +160,21 @@ async function authRoutes(fastify) {
         if (!otp || otp.codeHash !== hashCode(email, parsed.data.code)) {
             return reply.code(401).send({ error: 'Invalid or expired login code', code: 'INVALID_OTP' });
         }
-        const embeddedSignerAddress = parsed.data.embeddedSignerAddress
-            ? (0, bsc_1.normalizeAddress)(parsed.data.embeddedSignerAddress)
-            : null;
-        const smartAccountAddress = parsed.data.smartAccountAddress
-            ? (0, bsc_1.normalizeAddress)(parsed.data.smartAccountAddress)
-            : null;
-        const primaryWalletAddress = smartAccountAddress || embeddedSignerAddress || `0xemail${crypto_1.default.randomBytes(16).toString('hex')}`;
+        const existingUser = await prisma_1.prisma.user.findUnique({ where: { email } });
+        if (!existingUser?.primaryWalletAddress) {
+            return reply.code(409).send({
+                error: 'Email account must first sign in with the embedded wallet',
+                code: 'EMBEDDED_WALLET_REQUIRED',
+            });
+        }
         const user = await prisma_1.prisma.$transaction(async (tx) => {
             await tx.loginOtp.update({ where: { id: otp.id }, data: { consumed: true } });
-            return tx.user.upsert({
+            return tx.user.update({
                 where: { email },
-                update: {
-                    emailVerifiedAt: new Date(),
-                    primaryWalletAddress,
-                    embeddedSignerAddress,
-                    smartAccountAddress,
-                    authType: 'email',
-                },
-                create: {
-                    email,
-                    emailVerifiedAt: new Date(),
-                    primaryWalletAddress,
-                    embeddedSignerAddress,
-                    smartAccountAddress,
-                    authType: 'email',
-                    emailIdentities: { create: { email } },
-                    wallets: {
-                        create: {
-                            walletAddress: primaryWalletAddress,
-                            walletType: smartAccountAddress ? 'pimlico_smart_account' : 'email_embedded',
-                        },
-                    },
-                },
+                data: { emailVerifiedAt: new Date(), authType: 'email' },
             });
         });
-        const token = (0, jwt_1.signToken)(primaryWalletAddress, {
-            userId: user.id,
-            email,
-            authType: 'email',
-        });
-        return reply.send({
-            token,
-            userId: user.id,
-            email,
-            wallet: primaryWalletAddress,
-            embeddedSignerAddress,
-            smartAccountAddress,
-            authType: 'email',
-        });
+        return reply.send(publicUser(user, user.primaryWalletAddress));
     });
     // ── POST /api/auth/logout ─────────────────────────────────────────────────
     // Stateless — the client simply drops the JWT from storage.

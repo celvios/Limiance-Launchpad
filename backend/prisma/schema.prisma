@@ -332,4 +332,5 @@ model UserTokenBalance {
 
   @@unique([walletAddress, tokenAddress])
   @@index([walletAddress])
+  @@index([tokenAddress])
 }

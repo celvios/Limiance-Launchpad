@@ -9,16 +9,18 @@ import { PRIVY_APP_ID, API_BASE_URL } from '@/lib/constants';
 import { saveEmailSession, getEmailSession } from '@/lib/session';
 import { useRouter } from 'next/navigation';
 
-function normalizeAddress(addr: string | null | undefined): string | null {
-  return addr ? addr.toLowerCase() : null;
-}
+type SmartAccountClient = {
+  sendTransaction: (args: {
+    calls: Array<{ to: `0x${string}`; value: bigint; data: `0x${string}` }>;
+  }) => Promise<string>;
+};
 
 type EmbeddedWalletContextValue = {
   configured: boolean;
   isLoading: boolean;
   error: string | null;
   smartAccountAddress: string | null;
-  smartAccountClient: any | null;
+  smartAccountClient: SmartAccountClient | null;
 };
 
 const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(null);
@@ -26,14 +28,14 @@ const EmbeddedWalletContext = createContext<EmbeddedWalletContextValue | null>(n
 export function EmbeddedWalletProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
-  const { connected, address, setEmbeddedSession } = useWallet();
+  const { connected, setEmbeddedSession } = useWallet();
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [smartAccountClient, setSmartAccountClient] = useState<any>(null);
+  const [smartAccountClient, setSmartAccountClient] = useState<SmartAccountClient | null>(null);
   const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,8 +50,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     const cachedSession = getEmailSession(embeddedWallet.address);
     if (cachedSession) {
       if (!connected) {
-        const restoreAddr = cachedSession.smartAccountAddress ?? embeddedWallet.address;
-        setEmbeddedSession(restoreAddr, cachedSession.email, cachedSession.token);
+        setEmbeddedSession(embeddedWallet.address, cachedSession.email, cachedSession.token);
       }
       if (!hasLoggedIn) setHasLoggedIn(true);
       return;
@@ -75,7 +76,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
         
         if (!isMounted) return;
         setSmartAccountAddress(saAddr);
-        setSmartAccountClient(saClient);
+        setSmartAccountClient(saClient as SmartAccountClient);
 
         console.log('[EmbeddedWallet] Getting Ethereum provider...');
         const provider = await wallet.getEthereumProvider();
@@ -128,8 +129,8 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
           });
           setHasLoggedIn(true);
 
-          // Inject the SMART ACCOUNT address into BscWalletProvider.
-          setEmbeddedSession(saAddr, user?.email?.address || '', data.token);
+          // Use the backend-issued session wallet as the platform identity.
+          setEmbeddedSession(data.wallet ?? wallet.address, user?.email?.address || '', data.token);
 
           // Redirect to home
           router.push('/');

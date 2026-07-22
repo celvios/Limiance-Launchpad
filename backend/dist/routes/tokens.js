@@ -59,9 +59,9 @@ async function fetchTokenSocialCounts(tokenMints) {
             where: { tokenMint: { in: uniqueMints } },
             _count: { _all: true },
         }),
-        prisma_1.prisma.trade.groupBy({
-            by: ['tokenMint', 'walletAddress'],
-            where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+        prisma_1.prisma.userTokenBalance.findMany({
+            where: { tokenAddress: { in: uniqueMints }, amount: { gt: 0n } },
+            select: { tokenAddress: true, walletAddress: true },
         }),
         prisma_1.prisma.trade.groupBy({
             by: ['tokenMint'],
@@ -89,9 +89,15 @@ async function fetchTokenSocialCounts(tokenMints) {
             watchCount: row._count._all,
         });
     }
+    const holdersByToken = new Map();
     for (const row of holderRows) {
-        const current = countMap.get(row.tokenMint) ?? emptyCounts();
-        countMap.set(row.tokenMint, { ...current, holderCount: current.holderCount + 1 });
+        const holders = holdersByToken.get(row.tokenAddress) ?? new Set();
+        holders.add(row.walletAddress);
+        holdersByToken.set(row.tokenAddress, holders);
+    }
+    for (const [tokenMint, holders] of holdersByToken) {
+        const current = countMap.get(tokenMint) ?? emptyCounts();
+        countMap.set(tokenMint, { ...current, holderCount: holders.size });
     }
     for (const row of volRows) {
         const current = countMap.get(row.tokenMint) ?? emptyCounts();
@@ -571,9 +577,13 @@ async function tokenRoutes(app) {
                     }
                     // Roll back the bonding curve supply (raw integer units)
                     const newSupply = token.currentSupply - amountTokensRaw;
+                    const clampedSupply = newSupply > 0n ? newSupply : 0n;
                     await tx.token.update({
                         where: { id: token.id },
-                        data: { currentSupply: newSupply > 0n ? newSupply : 0n },
+                        data: {
+                            currentSupply: clampedSupply,
+                            status: clampedSupply >= token.graduationThreshold ? token.status : 'active',
+                        },
                     });
                 }
                 // Record trade activity
@@ -596,6 +606,7 @@ async function tokenRoutes(app) {
                 const finalSupply = type === 'buy'
                     ? token.currentSupply + amountTokensRaw
                     : token.currentSupply - amountTokensRaw;
+                const clampedFinalSupply = finalSupply > 0n ? finalSupply : 0n;
                 return {
                     trade: {
                         ...trade,
@@ -605,8 +616,8 @@ async function tokenRoutes(app) {
                         pricePerToken: trade.pricePerToken.toString(),
                     },
                     tokenSymbol: token.symbol,
-                    newSupply: finalSupply.toString(),
-                    graduated: type === 'buy' && finalSupply >= token.graduationThreshold
+                    newSupply: clampedFinalSupply.toString(),
+                    graduated: type === 'buy' && clampedFinalSupply >= token.graduationThreshold
                 };
             });
             (0, server_1.broadcast)({

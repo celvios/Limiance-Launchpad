@@ -72,9 +72,9 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
       where: { tokenMint: { in: uniqueMints } },
       _count: { _all: true },
     }),
-    prisma.trade.groupBy({
-      by: ['tokenMint', 'walletAddress'],
-      where: { tokenMint: { in: uniqueMints }, type: 'buy' },
+    prisma.userTokenBalance.findMany({
+      where: { tokenAddress: { in: uniqueMints }, amount: { gt: 0n } },
+      select: { tokenAddress: true, walletAddress: true },
     }),
     prisma.trade.groupBy({
       by: ['tokenMint'],
@@ -105,9 +105,16 @@ async function fetchTokenSocialCounts(tokenMints: string[]): Promise<Map<string,
     });
   }
 
+  const holdersByToken = new Map<string, Set<string>>();
   for (const row of holderRows) {
-    const current = countMap.get(row.tokenMint) ?? emptyCounts();
-    countMap.set(row.tokenMint, { ...current, holderCount: current.holderCount + 1 });
+    const holders = holdersByToken.get(row.tokenAddress) ?? new Set<string>();
+    holders.add(row.walletAddress);
+    holdersByToken.set(row.tokenAddress, holders);
+  }
+
+  for (const [tokenMint, holders] of holdersByToken) {
+    const current = countMap.get(tokenMint) ?? emptyCounts();
+    countMap.set(tokenMint, { ...current, holderCount: holders.size });
   }
 
   for (const row of volRows) {
@@ -653,9 +660,13 @@ export async function tokenRoutes(app: FastifyInstance) {
 
           // Roll back the bonding curve supply (raw integer units)
           const newSupply = token.currentSupply - amountTokensRaw;
+          const clampedSupply = newSupply > 0n ? newSupply : 0n;
           await tx.token.update({
             where: { id: token.id },
-            data: { currentSupply: newSupply > 0n ? newSupply : 0n },
+            data: {
+              currentSupply: clampedSupply,
+              status: clampedSupply >= token.graduationThreshold ? token.status : 'active',
+            },
           });
         }
 
@@ -680,6 +691,7 @@ export async function tokenRoutes(app: FastifyInstance) {
         const finalSupply = type === 'buy'
           ? token.currentSupply + amountTokensRaw
           : token.currentSupply - amountTokensRaw;
+        const clampedFinalSupply = finalSupply > 0n ? finalSupply : 0n;
 
         return {
           trade: {
@@ -690,8 +702,8 @@ export async function tokenRoutes(app: FastifyInstance) {
             pricePerToken: trade.pricePerToken.toString(),
           },
           tokenSymbol: token.symbol,
-          newSupply: finalSupply.toString(),
-          graduated: type === 'buy' && finalSupply >= token.graduationThreshold
+          newSupply: clampedFinalSupply.toString(),
+          graduated: type === 'buy' && clampedFinalSupply >= token.graduationThreshold
         };
       });
 

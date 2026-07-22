@@ -160,6 +160,9 @@ export function TradePanel({ token }: TradePanelProps) {
     queryClient.invalidateQueries({ queryKey: ['token-detail', token.mint] });
     queryClient.invalidateQueries({ queryKey: ['token-detail', tokenId] });
     queryClient.invalidateQueries({ queryKey: ['chart-data', token.mint] });
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    queryClient.invalidateQueries({ queryKey: ['explore'] });
+    queryClient.invalidateQueries({ queryKey: ['featured-tokens'] });
     queryClient.invalidateQueries({ queryKey: ['profile-trades', address] });
   }, [address, invalidateTokenBal, queryClient, token.mint, tokenId]);
 
