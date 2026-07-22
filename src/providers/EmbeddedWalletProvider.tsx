@@ -32,11 +32,11 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [smartAccountClient, setSmartAccountClient] = useState<SmartAccountClient | null>(null);
   const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
+  const isLoginInFlight = useRef(false);
   const sessionExpiryPending = useRef(false);
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     // If we are missing dependencies, wait.
-    if (!ready || !authenticated || !user || isAuthenticated || isLoading || sessionExpiryPending.current) return;
+    if (!ready || !authenticated || !user || isAuthenticated || isLoginInFlight.current || sessionExpiryPending.current) return;
 
     // Find the embedded wallet
     const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
@@ -64,7 +64,6 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     const cachedSession = getEmailSession(embeddedWallet.address);
     if (cachedSession) {
       setEmbeddedSession(embeddedWallet.address, cachedSession.email, cachedSession.token);
-      if (!hasLoggedIn) setHasLoggedIn(true);
       return;
     }
 
@@ -74,6 +73,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
 
     async function setupPimlicoAndLogin() {
       if (!isMounted) return;
+      isLoginInFlight.current = true;
       setIsLoading(true);
       setError(null);
 
@@ -139,7 +139,6 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
             token: data.token,
             smartAccountAddress: saAddr,
           });
-          setHasLoggedIn(true);
 
           // Use the backend-issued session wallet as the platform identity.
           setEmbeddedSession(data.wallet ?? wallet.address, user?.email?.address || '', data.token);
@@ -154,6 +153,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
         alert(`Login Error: ${msg}`);
         if (isMounted) setError(msg);
       } finally {
+        isLoginInFlight.current = false;
         if (isMounted) setIsLoading(false);
       }
     }
@@ -163,7 +163,7 @@ export function EmbeddedWalletProvider({ children }: { children: React.ReactNode
     return () => {
       isMounted = false;
     };
-  }, [ready, authenticated, user, wallets, isAuthenticated, isLoading, hasLoggedIn, setEmbeddedSession, router]);
+  }, [ready, authenticated, user, wallets, isAuthenticated, setEmbeddedSession, router]);
 
   return (
     <EmbeddedWalletContext.Provider
