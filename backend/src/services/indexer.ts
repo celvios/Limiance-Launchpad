@@ -165,10 +165,10 @@ async function backfillDepositTransactions(txHashes: string[]) {
 /**
  * Reconcile vault balances as a fallback safety net.
  *
- * This compares the total on-chain balance with the sum of all CREDITED deposits
- * already recorded for that vault. This way, the reconciler only acts when
- * actual funds are on-chain but NO deposit record exists for them — it won't
- * double-count amounts already credited by the log-polling loop.
+ * This is diagnostic only. A vault balance is not proof of a new deposit: it
+ * may contain funds deposited before the vault was tracked, or funds sent by
+ * another process. Only a Transfer event or an explicitly verified transaction
+ * may create a user credit.
  */
 async function reconcileActiveVaultBalances() {
   const limit = Number.isFinite(VAULT_RECONCILE_LIMIT) && VAULT_RECONCILE_LIMIT > 0
@@ -192,8 +192,8 @@ async function reconcileActiveVaultBalances() {
 
       if (onChainBalance === 0n) continue;
 
-      // Sum all deposits already recorded for this vault in the DB.
-      // This is the source-of-truth: only credit what isn't already recorded.
+      // Compare against recorded deposits only for diagnostics. Never credit
+      // the difference automatically because the transfer may predate tracking.
       const creditedAggregate = await prisma.deposit.aggregate({
         where: {
           vaultAddress: vault.vaultAddress,
@@ -203,20 +203,12 @@ async function reconcileActiveVaultBalances() {
       });
       const alreadyCredited = BigInt(creditedAggregate._sum?.amount ?? 0n);
 
-      if (onChainBalance <= alreadyCredited) continue;
-
-      const missingAmount = onChainBalance - alreadyCredited;
-
-      // Use a deterministic synthetic txHash that includes `alreadyCredited`
-      // so it's unique per "gap" we're filling, not per absolute balance.
-      const txHash = ethers.keccak256(
-        ethers.toUtf8Bytes(`vault-reconcile:${vault.chainId}:${vault.vaultAddress}:credited=${alreadyCredited}:gap=${missingAmount}`),
-      );
-
-      console.log(`[Indexer] Reconcile gap for vault ${vault.vaultAddress}: on-chain=${onChainBalance}, credited=${alreadyCredited}, gap=${missingAmount}`);
-
-      // creditDepositTransfer handles the duplicate-key guard atomically
-      await creditDepositTransfer(txHash, 0, vault.vaultAddress, missingAmount * 1000000000000n);
+      if (onChainBalance > alreadyCredited) {
+        console.warn(
+          `[Indexer] Unmatched vault balance for ${vault.vaultAddress}: on-chain=${onChainBalance}, credited=${alreadyCredited}. ` +
+          'No automatic user credit was issued; verify the deposit transaction first.',
+        );
+      }
 
     } catch (err) {
       console.warn(`[Indexer] Skipped vault ${vault.vaultAddress}: ${describeRpcError(err)}`);
