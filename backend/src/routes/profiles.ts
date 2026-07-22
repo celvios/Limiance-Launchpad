@@ -497,8 +497,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
           // of the fee-inclusive executable payout.
           const pMax = Number(token.curveParamA) / 1e18;
           const pMin = Number(token.curveParamB) / 1e18;
-          const supply = Number(token.currentSupply) / 1e6; // human token units
-          const gt = Number(token.graduationThreshold) / 1e6; // human token units
+          // Token.currentSupply and graduationThreshold are stored in whole-token
+          // units. Only Trade.amount and UserTokenBalance.amount use 6 decimals.
+          const supply = Number(token.currentSupply);
+          const gt = Number(token.graduationThreshold);
 
           const holderTradeTime = latestHolderTrade.get(h.tokenMint) ?? 0;
           const latestExternal = latestExternalTrade.get(h.tokenMint);
