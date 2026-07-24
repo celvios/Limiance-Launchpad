@@ -8,10 +8,10 @@ const ChartQuery = zod_1.z.object({
 });
 /** Bucket duration in seconds per range. */
 const BUCKET_SECONDS = {
-    '1h': 60, // 1-minute candles over 1 hour
-    '4h': 300, // 5-minute candles over 4 hours
-    '1d': 1800, // 30-minute candles over 1 day
-    'all': 86400, // 1-day candles over all time
+    '1h': 60, // 1-minute candles
+    '4h': 60, // 1-minute candles
+    '1d': 300, // 5-minute candles
+    'all': 3600, // 1-hour candles
 };
 /** How far back to look per range. */
 const LOOKBACK_MS = {
@@ -20,13 +20,18 @@ const LOOKBACK_MS = {
     '1d': 24 * 60 * 60 * 1000,
     'all': Infinity,
 };
+/**
+ * Exponential bonding curve spot price.
+ * Price(supply) = pMin * (pMax/pMin)^(supply / graduationThreshold)
+ */
+function getExponentialPrice(supply, pMin, pMax, graduationThreshold) {
+    if (graduationThreshold <= 0 || pMin <= 0 || pMax <= pMin)
+        return pMin;
+    return pMin * Math.pow(pMax / pMin, supply / graduationThreshold);
+}
+/** Convert stored pricePerToken BigInt to a human-readable float. */
+const formatPrice = (p) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
 async function chartRoutes(app) {
-    /**
-     * GET /api/tokens/:mint/chart
-     *
-     * Response:
-     *   { data: Array<{ time: number; price: string; volume: string }> }
-     */
     app.get('/api/tokens/:mint/chart', {
         config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     }, async (request, reply) => {
@@ -41,20 +46,61 @@ async function chartRoutes(app) {
         const since = lookbackMs === Infinity
             ? new Date(0)
             : new Date(Date.now() - lookbackMs);
-        const trades = await prisma_1.prisma.trade.findMany({
-            where: {
-                tokenMint: mint,
-                timestamp: { gte: since },
-            },
-            orderBy: { timestamp: 'asc' },
+        // Fetch the token for live price computation
+        const token = await prisma_1.prisma.token.findFirst({
+            where: { OR: [{ mint }, { tokenAddress: mint }] },
             select: {
-                timestamp: true,
-                pricePerToken: true,
-                solAmount: true,
+                currentSupply: true,
+                graduationThreshold: true,
+                curveParamA: true, // pMax (×1e18)
+                curveParamB: true, // pMin (×1e18)
+                createdAt: true,
             },
         });
-        if (trades.length === 0) {
-            return reply.send({ data: [] });
+        // Compute live spot price from the exponential curve
+        const livePriceUsdt = token
+            ? (() => {
+                const pMax = Number(token.curveParamA) / 1e18;
+                const pMin = Number(token.curveParamB) / 1e18;
+                const supply = Number(token.currentSupply);
+                const gt = Number(token.graduationThreshold);
+                return getExponentialPrice(supply, pMin, pMax, gt);
+            })()
+            : null;
+        // Convert live price to the same BigInt scale used for stored pricePerToken (×1e18)
+        const livePriceBigInt = livePriceUsdt !== null
+            ? BigInt(Math.round(livePriceUsdt * 1e18))
+            : null;
+        // Fetch the last trade BEFORE the window to establish the opening price
+        const previousTrade = await prisma_1.prisma.trade.findFirst({
+            where: { tokenMint: mint, timestamp: { lt: since } },
+            orderBy: { timestamp: 'desc' },
+            select: { pricePerToken: true },
+        });
+        // Fetch trades inside the time window
+        const trades = await prisma_1.prisma.trade.findMany({
+            where: { tokenMint: mint, timestamp: { gte: since } },
+            orderBy: { timestamp: 'asc' },
+            select: { timestamp: true, pricePerToken: true, solAmount: true },
+        });
+        // If no trade history at all, but we have a live price — bootstrap from token creation
+        if (trades.length === 0 && !previousTrade) {
+            if (livePriceBigInt === null)
+                return reply.send({ data: [] });
+            const nowSec = Math.floor(Date.now() / 1000);
+            const nowBucket = Math.floor(nowSec / bucketSec) * bucketSec;
+            const liveFloat = livePriceUsdt;
+            return reply.send({
+                data: [{
+                        time: nowBucket,
+                        open: liveFloat,
+                        high: liveFloat,
+                        low: liveFloat,
+                        close: liveFloat,
+                        value: liveFloat,
+                        volume: 0,
+                    }],
+            });
         }
         const bucketMap = new Map();
         for (const t of trades) {
@@ -65,37 +111,51 @@ async function chartRoutes(app) {
                 bucketMap.set(bucketTime, { time: bucketTime, open: p, high: p, low: p, close: p, volume: 0n });
             }
             const b = bucketMap.get(bucketTime);
-            b.close = p; // since trades are ordered asc, last one seen is close
+            b.close = p;
             if (p > b.high)
                 b.high = p;
             if (p < b.low)
                 b.low = p;
             b.volume += t.solAmount;
         }
-        const formatPrice = (p) => Number(p) < 1e10 ? Number(p) / 1e6 : Number(p) / 1e18;
         const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
-        const firstBucketTime = sortedBuckets[0].time;
-        const lastBucketTime = sortedBuckets[sortedBuckets.length - 1].time;
+        const startSec = Math.floor(since.getTime() / 1000);
+        const windowStartBucketTime = Math.floor(startSec / bucketSec) * bucketSec;
+        const firstBucketTime = sortedBuckets.length > 0
+            ? (previousTrade ? windowStartBucketTime : sortedBuckets[0].time)
+            : windowStartBucketTime;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const currentBucketTime = Math.floor(nowSec / bucketSec) * bucketSec;
+        const lastBucketTime = Math.max(sortedBuckets.length > 0 ? sortedBuckets[sortedBuckets.length - 1].time : 0, currentBucketTime);
         const filledBuckets = [];
-        let previousClose = sortedBuckets[0].open;
-        for (let time = firstBucketTime; time <= lastBucketTime; time += bucketSec) {
-            const bucket = bucketMap.get(time);
-            if (bucket) {
-                filledBuckets.push(bucket);
-                previousClose = bucket.close;
-            }
-            else {
-                filledBuckets.push({
-                    time,
-                    open: previousClose,
-                    high: previousClose,
-                    low: previousClose,
-                    close: previousClose,
-                    volume: 0n,
-                });
-            }
+        // Iterate through sorted buckets and only add the ones that have actual trades
+        for (const bucket of sortedBuckets) {
+            filledBuckets.push(bucket);
         }
-        // Emit OHLC in each bucket. Empty buckets become flat candles so the chart remains continuous.
+        // Always ensure there is a bucket for the current time to show the live price
+        if (filledBuckets.length === 0 || filledBuckets[filledBuckets.length - 1].time < currentBucketTime) {
+            const lastClose = filledBuckets.length > 0 ? filledBuckets[filledBuckets.length - 1].close : (previousTrade ? previousTrade.pricePerToken : 0n);
+            filledBuckets.push({
+                time: currentBucketTime,
+                open: lastClose,
+                high: lastClose,
+                low: lastClose,
+                close: lastClose,
+                volume: 0n,
+            });
+        }
+        // ── Override the current (latest) bucket with the live spot price ──────────
+        // This ensures the chart always reflects the true current bonding-curve price,
+        // even when the token has few or no recent trades.
+        if (filledBuckets.length > 0 && livePriceBigInt !== null) {
+            const last = filledBuckets[filledBuckets.length - 1];
+            // Only update close/high; preserve open/low from actual trades
+            last.close = livePriceBigInt;
+            if (livePriceBigInt > last.high)
+                last.high = livePriceBigInt;
+            if (livePriceBigInt < last.low)
+                last.low = livePriceBigInt;
+        }
         const data = filledBuckets.map((b) => ({
             time: b.time,
             open: formatPrice(b.open),
@@ -103,7 +163,7 @@ async function chartRoutes(app) {
             low: formatPrice(b.low),
             close: formatPrice(b.close),
             value: formatPrice(b.close),
-            volume: Number(b.volume) / 1e18,
+            volume: Number(b.volume) / 1e6,
         }));
         return reply.send({ data });
     });
