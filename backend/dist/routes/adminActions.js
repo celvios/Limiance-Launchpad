@@ -4,6 +4,7 @@ exports.adminActionRoutes = adminActionRoutes;
 const zod_1 = require("zod");
 const prisma_1 = require("../services/prisma");
 const adminAuth_1 = require("../lib/adminAuth");
+const bsc_1 = require("../services/bsc");
 const ReasonBody = zod_1.z.object({ reason: zod_1.z.string().trim().min(3).max(500).optional() });
 const UserStatusBody = ReasonBody.extend({ status: zod_1.z.enum(['active', 'suspended']) });
 const AdminCreateBody = zod_1.z.object({ email: zod_1.z.string().email(), password: zod_1.z.string().min(12).max(200), displayName: zod_1.z.string().trim().min(2).max(80), role: zod_1.z.enum(['super_admin', 'finance_admin', 'token_admin', 'moderation_admin', 'support_admin', 'viewer']) });
@@ -67,7 +68,7 @@ async function adminActionRoutes(app) {
                 throw Object.assign(new Error('Withdrawal is already finalized'), { statusCode: 409 });
             const next = await tx.withdrawalRequest.update({ where: { id }, data: { status: parsed.data.status, txHash: parsed.data.txHash ?? withdrawal.txHash, error: parsed.data.status === 'failed' ? parsed.data.reason ?? 'Rejected by finance administrator' : null, refundedAt: parsed.data.status === 'failed' && !withdrawal.refundedAt ? new Date() : withdrawal.refundedAt } });
             if (parsed.data.status === 'failed' && !withdrawal.refundedAt) {
-                await tx.userBalance.upsert({ where: { walletAddress_chainId_asset: { walletAddress: withdrawal.userWallet, chainId: 97, asset: withdrawal.asset } }, update: { available: { increment: withdrawal.amount } }, create: { userId: withdrawal.userId, walletAddress: withdrawal.userWallet, chainId: 97, asset: withdrawal.asset, available: withdrawal.amount } });
+                await tx.userBalance.upsert({ where: { walletAddress_chainId_asset: { walletAddress: withdrawal.userWallet, chainId: bsc_1.BSC_CHAIN_ID, asset: withdrawal.asset } }, update: { available: { increment: withdrawal.amount } }, create: { userId: withdrawal.userId, walletAddress: withdrawal.userWallet, chainId: bsc_1.BSC_CHAIN_ID, asset: withdrawal.asset, available: withdrawal.amount } });
             }
             return next;
         }).catch((error) => { if (error?.statusCode)

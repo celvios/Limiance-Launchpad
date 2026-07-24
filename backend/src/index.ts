@@ -24,6 +24,7 @@ import { assertProductionConfig } from './services/production';
 import { addClient, removeClient } from './ws/server';
 import { runIndexer } from './services/indexer';
 import { runHotWalletWorker } from './services/hotWallet';
+import { authenticateSession } from './lib/jwt';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const IS_DEV = process.env.NODE_ENV !== 'production';
@@ -35,6 +36,16 @@ async function main() {
     logger: {
       level: IS_DEV ? 'info' : 'warn',
     },
+  });
+
+  // Enforce suspensions for already-issued user JWTs as well as future logins.
+  // Admin bearer tokens are a different JWT shape and are ignored here.
+  app.addHook('preHandler', async (request, reply) => {
+    if (request.url === '/health' || request.url.startsWith('/api/admin/')) return;
+    const session = authenticateSession(request.headers.authorization);
+    if (!session?.userId) return;
+    const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { status: true } });
+    if (user?.status === 'suspended') return reply.code(403).send({ error: 'Account suspended', code: 'ACCOUNT_SUSPENDED' });
   });
 
   // ── Plugins ─────────────────────────────────────────────────────────────────

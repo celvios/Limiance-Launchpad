@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../services/prisma';
 import { hashAdminPassword, requireAdmin, writeAdminAudit } from '../lib/adminAuth';
+import { BSC_CHAIN_ID } from '../services/bsc';
 
 const ReasonBody = z.object({ reason: z.string().trim().min(3).max(500).optional() });
 const UserStatusBody = ReasonBody.extend({ status: z.enum(['active', 'suspended']) });
@@ -58,7 +59,7 @@ export async function adminActionRoutes(app: FastifyInstance) {
       if (parsed.data.status === 'failed' && ['completed', 'failed'].includes(withdrawal.status)) throw Object.assign(new Error('Withdrawal is already finalized'), { statusCode: 409 });
       const next = await tx.withdrawalRequest.update({ where: { id }, data: { status: parsed.data.status, txHash: parsed.data.txHash ?? withdrawal.txHash, error: parsed.data.status === 'failed' ? parsed.data.reason ?? 'Rejected by finance administrator' : null, refundedAt: parsed.data.status === 'failed' && !withdrawal.refundedAt ? new Date() : withdrawal.refundedAt } });
       if (parsed.data.status === 'failed' && !withdrawal.refundedAt) {
-        await tx.userBalance.upsert({ where: { walletAddress_chainId_asset: { walletAddress: withdrawal.userWallet, chainId: 97, asset: withdrawal.asset } }, update: { available: { increment: withdrawal.amount } }, create: { userId: withdrawal.userId, walletAddress: withdrawal.userWallet, chainId: 97, asset: withdrawal.asset, available: withdrawal.amount } });
+        await tx.userBalance.upsert({ where: { walletAddress_chainId_asset: { walletAddress: withdrawal.userWallet, chainId: BSC_CHAIN_ID, asset: withdrawal.asset } }, update: { available: { increment: withdrawal.amount } }, create: { userId: withdrawal.userId, walletAddress: withdrawal.userWallet, chainId: BSC_CHAIN_ID, asset: withdrawal.asset, available: withdrawal.amount } });
       }
       return next;
     }).catch((error: any) => { if (error?.statusCode) throw error; throw error; });
