@@ -22,6 +22,7 @@ const deposits_1 = require("./routes/deposits");
 const reports_1 = require("./routes/reports");
 const adminAuth_1 = require("./routes/adminAuth");
 const adminData_1 = require("./routes/adminData");
+const adminActions_1 = require("./routes/adminActions");
 const prisma_1 = require("./services/prisma");
 const production_1 = require("./services/production");
 const server_1 = require("./ws/server");
@@ -77,6 +78,7 @@ async function main() {
     await app.register(reports_1.reportRoutes);
     await app.register(adminAuth_1.adminAuthRoutes);
     await app.register(adminData_1.adminDataRoutes);
+    await app.register(adminActions_1.adminActionRoutes);
     // ── WebSocket endpoint ───────────────────────────────────────────────────────
     app.get('/ws', { websocket: true }, (socket) => {
         (0, server_1.addClient)(socket);

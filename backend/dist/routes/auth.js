@@ -87,6 +87,9 @@ async function authRoutes(fastify) {
         const existingUser = await prisma_1.prisma.user.findUnique({
             where: { primaryWalletAddress: normalizedWallet },
         });
+        if (existingUser?.status === 'suspended') {
+            return reply.code(403).send({ error: 'Account suspended', code: 'ACCOUNT_SUSPENDED' });
+        }
         if (normalizedSmartAccount &&
             existingUser?.smartAccountAddress &&
             existingUser.smartAccountAddress !== normalizedSmartAccount) {
@@ -167,6 +170,9 @@ async function authRoutes(fastify) {
                 code: 'EMBEDDED_WALLET_REQUIRED',
             });
         }
+        if (existingUser.status === 'suspended') {
+            return reply.code(403).send({ error: 'Account suspended', code: 'ACCOUNT_SUSPENDED' });
+        }
         const user = await prisma_1.prisma.$transaction(async (tx) => {
             await tx.loginOtp.update({ where: { id: otp.id }, data: { consumed: true } });
             return tx.user.update({
@@ -203,6 +209,9 @@ async function authRoutes(fastify) {
         const user = session.userId
             ? await prisma_1.prisma.user.findUnique({ where: { id: session.userId } })
             : null;
+        if (user?.status === 'suspended') {
+            return reply.code(403).send({ error: 'Account suspended', code: 'ACCOUNT_SUSPENDED' });
+        }
         return reply.send({
             userId: user?.id ?? session.userId ?? null,
             email: user?.email ?? session.email ?? null,

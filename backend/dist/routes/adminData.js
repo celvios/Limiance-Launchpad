@@ -46,7 +46,7 @@ async function adminDataRoutes(app) {
         const users = await prisma_1.prisma.user.findMany({
             where: search ? { OR: [{ email: { contains: search } }, { primaryWalletAddress: { contains: search } }] } : undefined,
             orderBy: { createdAt: 'desc' }, take: limit, skip: offset,
-            select: { id: true, email: true, primaryWalletAddress: true, authType: true, createdAt: true, updatedAt: true },
+            select: { id: true, email: true, primaryWalletAddress: true, authType: true, status: true, createdAt: true, updatedAt: true },
         });
         const wallets = users.flatMap((user) => user.primaryWalletAddress ? [user.primaryWalletAddress] : []);
         const [profiles, balances] = await Promise.all([
@@ -104,14 +104,6 @@ async function adminDataRoutes(app) {
         const { limit, offset } = page(request.query);
         const logs = await prisma_1.prisma.adminAuditLog.findMany({ orderBy: { createdAt: 'desc' }, take: limit, skip: offset, include: { adminUser: { select: { email: true, displayName: true, role: true } } } });
         return reply.send({ logs });
-    });
-    app.post('/api/admin/users/:wallet/suspend', async (request, reply) => {
-        const admin = await (0, adminAuth_1.requireAdmin)(request, ['super_admin', 'support_admin']);
-        if (!admin)
-            return reply.code(403).send({ error: 'Forbidden' });
-        const wallet = request.params.wallet.toLowerCase();
-        await (0, adminAuth_1.writeAdminAudit)({ adminUserId: admin.id, action: 'user.suspend', targetType: 'wallet', targetId: wallet, reason: 'Administrative suspension', ipAddress: request.ip });
-        return reply.send({ success: true, wallet, status: 'suspended_pending_policy' });
     });
 }
 //# sourceMappingURL=adminData.js.map

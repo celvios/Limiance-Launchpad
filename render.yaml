@@ -54,6 +54,10 @@ services:
         sync: false
       - key: INDEXER_SECRET
         generateValue: true
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      - key: ADMIN_SETUP_SECRET
+        sync: false
 
 databases:
   - name: launchpad-db

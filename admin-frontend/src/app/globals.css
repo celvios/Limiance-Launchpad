@@ -52,5 +52,15 @@ tr:last-child td { border-bottom: 0; }
 .login { width: min(420px, 100%); padding: 30px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 .login h1 { margin: 0 0 8px; }.login p { color: var(--muted); font-size: 14px; margin: 0 0 24px; }.login label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; margin-top: 14px; }.login input { width: 100%; }.login button { width: 100%; margin-top: 20px; }
 .error { color: var(--red); font-size: 13px; margin-top: 12px; }
+.small { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; background: var(--panel-2); color: var(--text); font-size: 12px; }
+.small.danger { border-color: #673040; color: var(--red); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 14px; color: var(--muted); font-size: 13px; }
+.pager button { border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; background: var(--panel-2); color: var(--text); }
+.pager button:disabled { opacity: .45; cursor: not-allowed; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.inline-form input, .inline-form select { min-width: 150px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 6px; padding: 9px 11px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(0,0,0,.68); }
+.modal { width: min(720px, 100%); max-height: 85vh; overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.modal pre { overflow: auto; padding: 14px; border-radius: 6px; background: var(--panel-2); color: var(--muted); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
 @media (max-width: 900px) { .sidebar { width: 70px; flex-basis: 70px; padding: 18px 8px; }.brand { padding: 0 8px 25px; font-size: 0; }.brand span { font-size: 18px; }.nav button { justify-content: center; }.nav button span { display: none; }.topbar, .content { padding-left: 18px; padding-right: 18px; }.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .cards { grid-template-columns: 1fr 1fr; gap: 8px; }.card { padding: 12px; }.card-value { font-size: 19px; } }

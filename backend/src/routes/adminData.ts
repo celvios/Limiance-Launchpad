@@ -46,7 +46,7 @@ export async function adminDataRoutes(app: FastifyInstance) {
     const users = await prisma.user.findMany({
       where: search ? { OR: [{ email: { contains: search } }, { primaryWalletAddress: { contains: search } }] } : undefined,
       orderBy: { createdAt: 'desc' }, take: limit, skip: offset,
-      select: { id: true, email: true, primaryWalletAddress: true, authType: true, createdAt: true, updatedAt: true },
+      select: { id: true, email: true, primaryWalletAddress: true, authType: true, status: true, createdAt: true, updatedAt: true },
     });
     const wallets = users.flatMap((user) => user.primaryWalletAddress ? [user.primaryWalletAddress] : []);
     const [profiles, balances] = await Promise.all([
@@ -105,11 +105,4 @@ export async function adminDataRoutes(app: FastifyInstance) {
     return reply.send({ logs });
   });
 
-  app.post('/api/admin/users/:wallet/suspend', async (request, reply) => {
-    const admin = await requireAdmin(request, ['super_admin', 'support_admin']);
-    if (!admin) return reply.code(403).send({ error: 'Forbidden' });
-    const wallet = (request.params as { wallet: string }).wallet.toLowerCase();
-    await writeAdminAudit({ adminUserId: admin.id, action: 'user.suspend', targetType: 'wallet', targetId: wallet, reason: 'Administrative suspension', ipAddress: request.ip });
-    return reply.send({ success: true, wallet, status: 'suspended_pending_policy' });
-  });
 }
